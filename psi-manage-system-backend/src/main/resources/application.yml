@@ -69,7 +69,7 @@ app:
     embedding-store-dir: ${APP_EMBEDDING_STORE_DIR:data/image-embeddings}
 
 dashscope:
-  api-key: ${DASHSCOPE_API_KEY:REDACTED}
+  api-key: ${DASHSCOPE_API_KEY:}
 
 logging:
   file:
