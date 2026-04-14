@@ -1,0 +1,284 @@
+@use './variables.scss' as *;
+
+// 全局样式
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+body {
+  font-family: 'PingFang SC', 'Microsoft YaHei', 'Helvetica Neue', Helvetica, Arial, sans-serif;
+  background: $bg-color;
+  color: $text-color-primary;
+  min-height: 100vh;
+}
+
+// Element Plus 样式覆盖
+.el-button--primary {
+  background: linear-gradient(135deg, $sidebar-primary 0%, #ff6b6b 100%);
+  border: none;
+
+  &:hover {
+    background: linear-gradient(135deg, #ff6b6b 0%, $sidebar-primary 100%);
+  }
+}
+
+.el-card {
+  border-radius: $border-radius-large;
+  border: 1px solid $border-color-light;
+  box-shadow: $shadow-light;
+}
+
+.el-table {
+  --el-table-header-bg-color: #{$bg-color};
+  --el-table-row-hover-bg-color: #{rgba($primary-color, 0.05)};
+
+  th.el-table__cell {
+    font-weight: 600;
+    color: $text-color-secondary;
+  }
+
+  // 图 + 标题型商品单元格：标题单行省略（若有规格等副行仍可换行显示）
+  .product-cell {
+    min-width: 0;
+
+    .product-info {
+      min-width: 0;
+      flex: 1;
+
+      h4 {
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+    }
+  }
+}
+
+// 与分页器同区块的列表表（el-card / el-dialog）：列内不换行，短文本尽量完整展示，过长列请配合 show-overflow-tooltip
+:is(.el-card, .el-dialog):has(.pagination-wrapper) {
+  .el-table {
+    th.el-table__cell .cell,
+    td.el-table__cell .cell {
+      white-space: nowrap;
+    }
+  }
+}
+
+// 表格内「缩略图 + 商品名」列：flex 子项可收缩，名单行省略
+.product-cell-mini {
+  min-width: 0;
+
+  .product-name-mini {
+    min-width: 0;
+    flex: 1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+}
+
+// 表格内客户列（图标 + 名称）：名单行省略
+.customer-cell {
+  min-width: 0;
+
+  .customer-info {
+    min-width: 0;
+    flex: 1;
+
+    h4 {
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+  }
+}
+
+.el-dialog {
+  border-radius: $border-radius-large;
+
+  .el-dialog__header {
+    border-bottom: 1px solid $border-color-light;
+    padding: 16px 20px;
+  }
+
+  .el-dialog__body {
+    padding: 20px;
+  }
+
+  .el-dialog__footer {
+    border-top: 1px solid $border-color-light;
+    padding: 16px 20px;
+  }
+}
+
+.el-tabs__item {
+  font-size: 14px;
+
+  &.is-active {
+    color: $sidebar-primary;
+  }
+}
+
+// 自定义滚动条
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(0, 0, 0, 0.2);
+  border-radius: 3px;
+
+  &:hover {
+    background: rgba(0, 0, 0, 0.3);
+  }
+}
+
+// 状态徽章
+.status-badge {
+  padding: 4px 12px;
+  border-radius: 20px;
+  font-size: 12px;
+  font-weight: 600;
+
+  &--success {
+    background: rgba($success-color, 0.1);
+    color: $success-color;
+  }
+
+  &--warning {
+    background: rgba($warning-color, 0.1);
+    color: $warning-color;
+  }
+
+  &--danger {
+    background: rgba($danger-color, 0.1);
+    color: $danger-color;
+  }
+
+  &--info {
+    background: rgba($info-color, 0.1);
+    color: $info-color;
+  }
+}
+
+// 金额样式
+.amount-text {
+  font-weight: 600;
+  color: $sidebar-primary;
+}
+
+// 卡片标题
+.card-title {
+  font-size: 16px;
+  font-weight: 600;
+  color: $text-color-primary;
+  margin-bottom: 16px;
+}
+
+// 统计卡片
+.stat-card {
+  background: $bg-color-card;
+  border-radius: $border-radius-large;
+  padding: 20px;
+  border: 1px solid $border-color-light;
+  transition: all 0.3s ease;
+
+  &:hover {
+    box-shadow: $shadow-base;
+    transform: translateY(-2px);
+  }
+
+  .stat-icon {
+    width: 48px;
+    height: 48px;
+    border-radius: 12px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin-bottom: 16px;
+    font-size: 24px;
+
+    &--purple {
+      background: rgba(139, 92, 246, 0.1);
+      color: #8B5CF6;
+    }
+
+    &--green {
+      background: rgba($success-color, 0.1);
+      color: $success-color;
+    }
+
+    &--blue {
+      background: rgba($primary-color, 0.1);
+      color: $primary-color;
+    }
+
+    &--orange {
+      background: rgba($warning-color, 0.1);
+      color: $warning-color;
+    }
+  }
+
+  .stat-value {
+    font-size: 28px;
+    font-weight: 700;
+    color: $text-color-primary;
+    margin-bottom: 4px;
+  }
+
+  .stat-label {
+    font-size: 14px;
+    color: $text-color-secondary;
+    margin-bottom: 12px;
+  }
+
+  .stat-trend {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 13px;
+
+    &--up {
+      color: $success-color;
+    }
+
+    &--down {
+      color: $danger-color;
+    }
+  }
+}
+
+// 页面标题区域
+.page-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 20px;
+
+  .header-left {
+    h2 {
+      font-size: 24px;
+      font-weight: 700;
+      color: $text-color-primary;
+      margin-bottom: 8px;
+    }
+
+    p {
+      font-size: 14px;
+      color: $text-color-secondary;
+    }
+  }
+
+  .header-right {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+  }
+}

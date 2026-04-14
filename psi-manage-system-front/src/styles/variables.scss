@@ -1,0 +1,39 @@
+// 主题变量 - Light Mode 浅色调
+$primary-color: #409EFF;
+$success-color: #67C23A;
+$warning-color: #E6A23C;
+$danger-color: #F56C6C;
+$info-color: #909399;
+
+// 背景色
+$bg-color: #F5F7FA;
+$bg-color-page: #FFFFFF;
+$bg-color-sidebar: #1A1A2E;
+$bg-color-card: #FFFFFF;
+
+// 文字颜色
+$text-color-primary: #303133;
+$text-color-regular: #606266;
+$text-color-secondary: #909399;
+$text-color-placeholder: #C0C4CC;
+
+// 边框
+$border-color-base: #DCDFE6;
+$border-color-light: #E4E7ED;
+$border-radius-base: 8px;
+$border-radius-large: 12px;
+
+// 阴影
+$shadow-base: 0 2px 12px 0 rgba(0, 0, 0, 0.1);
+$shadow-light: 0 2px 8px 0 rgba(0, 0, 0, 0.06);
+
+// 侧边栏主题色（深色）
+$sidebar-primary: #E94560;
+$sidebar-bg: #1A1A2E;
+$sidebar-secondary: #16213E;
+$sidebar-text: rgba(255, 255, 255, 0.7);
+$sidebar-active-text: #FFFFFF;
+
+// 尺寸
+$sidebar-width: 260px;
+$header-height: 60px;

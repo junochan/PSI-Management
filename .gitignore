@@ -1,0 +1,43 @@
+# Dependencies
+node_modules/
+
+# Build / compile
+dist/
+dist-ssr/
+target/
+*.class
+
+# Logs
+logs/
+*.log
+
+# IDE
+.idea/
+*.iml
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Env & local secrets (do not commit real keys)
+.env
+.env.local
+.env.*.local
+**/application-local.yml
+
+# Frontend (Vite)
+psi-manage-system-front/node_modules/
+psi-manage-system-front/dist/
+psi-manage-system-front/.vite/
+
+# Backend: generated embeddings cache & uploads (runtime data)
+psi-manage-system-backend/data/image-embeddings/
+psi-manage-system-backend/data/uploads/
+
+# Tooling / local agent state
+.claude/
+.playwright-mcp/
+
+# Coverage
+coverage/
+.nyc_output/

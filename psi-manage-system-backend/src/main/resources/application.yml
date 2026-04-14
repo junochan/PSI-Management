@@ -1,0 +1,79 @@
+server:
+  port: 8080
+  servlet:
+    context-path: /api
+  tomcat:
+    max-http-form-post-size: 15MB
+
+spring:
+  application:
+    name: smart-ims
+
+  profiles:
+    active: dev
+
+  servlet:
+    multipart:
+      max-file-size: 10MB
+      max-request-size: 15MB
+
+  datasource:
+    driver-class-name: com.mysql.cj.jdbc.Driver
+    url: jdbc:mysql://localhost:3306/smart_ims?useUnicode=true&characterEncoding=utf-8&useSSL=false&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true
+    username: root
+    password: root
+    hikari:
+      minimum-idle: 5
+      maximum-pool-size: 20
+      connection-timeout: 30000
+      idle-timeout: 600000
+      max-lifetime: 1800000
+
+  jackson:
+    date-format: yyyy-MM-dd HH:mm:ss
+    time-zone: Asia/Shanghai
+    serialization:
+      write-dates-as-timestamps: false
+
+mybatis-plus:
+  configuration:
+    map-underscore-to-camel-case: true
+    log-impl: org.apache.ibatis.logging.stdout.StdOutImpl
+  global-config:
+    db-config:
+      id-type: auto
+      logic-delete-field: deleted
+      logic-delete-value: 1
+      logic-not-delete-value: 0
+  mapper-locations: classpath:mapper/**/*.xml
+  type-aliases-package: com.smartims.entity
+
+knife4j:
+  enable: true
+  setting:
+    language: zh_cn
+
+jwt:
+  secret: REDACTED
+  expiration: 7200000
+  header: Authorization
+  prefix: Bearer
+
+# 以图搜图：DashScope 多模态向量 + 本地 JSON 缓存（相对运行目录）
+app:
+  # 本地附件根目录；商品图存于 {attachment-dir}/uploads/products/，HTTP 路径 /api/uploads/products/
+  attachment-dir: ${APP_ATTACHMENT_DIR:data}
+  image-search:
+    similarity-threshold: ${APP_IMAGE_SEARCH_SIMILARITY_THRESHOLD:0.7}
+    embedding-model: ${APP_IMAGE_EMBEDDING_MODEL:tongyi-embedding-vision-flash-2026-03-06}
+    embedding-store-dir: ${APP_EMBEDDING_STORE_DIR:data/image-embeddings}
+
+dashscope:
+  api-key: ${DASHSCOPE_API_KEY:}
+
+logging:
+  file:
+    name: logs/smart-ims.log
+  level:
+    com.smartims: debug
+    org.springframework.security: info

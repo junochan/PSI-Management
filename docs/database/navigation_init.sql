@@ -1,0 +1,25 @@
+-- =============================================================================
+-- 导航与权限初始化说明（与 smart_ims.sql 中 sys_permission / sys_role_permission 配合）
+-- =============================================================================
+-- 1) 侧边栏菜单：sys_permission.type = 1，字段 path 为前端路径（如 /dashboard），
+--    icon 为 Element Plus 图标组件名（如 Odometer），sort 控制顺序。
+-- 2) 按钮/操作权限：type = 2，挂在对应父菜单 parent_id 下，code 如 product:view。
+-- 3) 角色可见菜单：在 sys_role_permission 中关联 role_id 与 permission_id。
+-- 4) 后端 REST 与前端页面的「路径 → 权限码」统一在
+--    ApplicationPermissionRegistry（API 规则 + UiRouteDefinition）中维护；
+--    前端 viewKey 与 src/router/view-loaders.js 中的键一致。
+-- 5) 若新增业务模块：在库中插入 type=1 菜单与相关 type=2 权限、更新角色关联，
+--    并在 ApplicationPermissionRegistry 增加 API 路径规则与 UiRouteDefinition，
+--    在前端 view-loaders.js 注册 viewKey。
+-- 6) 报表菜单 code=reports 暂无对应页面时，NavigationServiceImpl 会过滤该菜单；
+--    上线报表页后从 MENU_CODES_WITHOUT_PAGE 移除并补充 UiRouteDefinition。
+-- 7) 采购岗与跨模块只读接口（ApplicationPermissionRegistry 内「多码满足其一」）：
+--    - GET /v1/products/**：具备 products、product:view、purchase、purchase:view 之一即可；
+--    - POST/PUT/DELETE /v1/products/**：仍须商品模块或对应 product:add / product:edit / product:delete；
+--    - GET /v1/categories/**：与 GET 商品列表相同的 OR 规则；写操作与商品类似；
+--    - GET /v1/warehouses/**：具备 inventory、inventory:view、purchase、purchase:view 之一即可；
+--    - POST/PUT/DELETE /v1/warehouses/**：须 inventory。
+--    建议采购专员角色至少勾选：一级菜单 purchase（code=purchase）、purchase:view、purchase:add、
+--    purchase:edit、purchase:inbound；若需在采购页使用「按商品筛选」与商品缩略图，可再勾选 product:view；
+--    若需仓库下拉完整可用，可再勾选 inventory:view（仅只读仓库列表，不含库存流水）。
+-- =============================================================================

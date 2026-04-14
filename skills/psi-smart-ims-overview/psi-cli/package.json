@@ -1,0 +1,17 @@
+{
+  "name": "psi-smart-ims-cli",
+  "version": "1.0.0",
+  "description": "智链进销存 smart-ims 后端 HTTP API 命令行客户端",
+  "type": "module",
+  "bin": {
+    "psims": "./bin/psims.mjs"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "axios": "^1.7.9",
+    "commander": "^12.1.0",
+    "form-data": "^4.0.1"
+  }
+}
