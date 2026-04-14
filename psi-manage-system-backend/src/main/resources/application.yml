@@ -9,6 +9,9 @@ spring:
   application:
     name: smart-ims
 
+  config:
+    import: optional:classpath:application-local.yml
+
   profiles:
     active: dev
 
@@ -20,8 +23,8 @@ spring:
   datasource:
     driver-class-name: com.mysql.cj.jdbc.Driver
     url: jdbc:mysql://localhost:3306/smart_ims?useUnicode=true&characterEncoding=utf-8&useSSL=false&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true
-    username: root
-    password: root
+    username: ${DB_USERNAME:root}
+    password: ${DB_PASSWORD:root}
     hikari:
       minimum-idle: 5
       maximum-pool-size: 20
@@ -54,7 +57,8 @@ knife4j:
     language: zh_cn
 
 jwt:
-  secret: REDACTED
+  # 生产环境请用环境变量 JWT_SECRET 或 application-local.yml 覆盖，勿使用仓库默认值
+  secret: ${JWT_SECRET:dev-only-change-me-via-env-or-application-local-min-32chars!}
   expiration: 7200000
   header: Authorization
   prefix: Bearer
