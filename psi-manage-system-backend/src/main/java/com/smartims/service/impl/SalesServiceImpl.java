@@ -182,7 +182,7 @@ public class SalesServiceImpl implements SalesService {
             throw new BusinessException("商品不存在");
         }
 
-        // 验证库存
+        // 验证库存：未指定发货仓库时按全仓可用库存汇总校验；指定仓库时校验该仓库存
         if (dto.getWarehouseId() != null) {
             LambdaQueryWrapper<Inventory> invQuery = new LambdaQueryWrapper<>();
             invQuery.eq(Inventory::getProductId, dto.getProductId());
@@ -191,6 +191,11 @@ public class SalesServiceImpl implements SalesService {
             Inventory inventory = inventoryMapper.selectOne(invQuery);
             if (inventory == null || inventory.getStock() < dto.getQuantity()) {
                 throw new BusinessException("库存不足");
+            }
+        } else {
+            int totalStock = sumStockForProduct(dto.getProductId());
+            if (totalStock < dto.getQuantity()) {
+                throw new BusinessException("库存不足，当前可售数量为 " + totalStock + " 件");
             }
         }
 
@@ -239,6 +244,23 @@ public class SalesServiceImpl implements SalesService {
                 }
             }
         }
+    }
+
+    /**
+     * 商品在各仓库可用库存之和（未删除的库存行）。
+     */
+    private int sumStockForProduct(Long productId) {
+        LambdaQueryWrapper<Inventory> q = new LambdaQueryWrapper<>();
+        q.eq(Inventory::getProductId, productId);
+        q.eq(Inventory::getDeleted, 0);
+        List<Inventory> rows = inventoryMapper.selectList(q);
+        int sum = 0;
+        for (Inventory inv : rows) {
+            if (inv.getStock() != null) {
+                sum += inv.getStock();
+            }
+        }
+        return sum;
     }
 
     /**
@@ -324,6 +346,7 @@ public class SalesServiceImpl implements SalesService {
         }
 
         order.setPayStatus("paid"); // 已付款
+        order.setPayTime(LocalDateTime.now());
         salesOrderMapper.updateById(order);
         log.info("确认付款成功：orderId={}", orderId);
     }
@@ -396,6 +419,15 @@ public class SalesServiceImpl implements SalesService {
         order.setLogisticsCompany(dto.getLogisticsCompany());
         order.setLogisticsNo(dto.getLogisticsNo());
         order.setShipTime(LocalDateTime.now());
+        if (StringUtils.hasText(dto.getReceiverName())) {
+            order.setReceiverName(dto.getReceiverName().trim());
+        }
+        if (StringUtils.hasText(dto.getReceiverPhone())) {
+            order.setReceiverPhone(dto.getReceiverPhone().trim());
+        }
+        if (StringUtils.hasText(dto.getReceiverAddress())) {
+            order.setReceiverAddress(dto.getReceiverAddress().trim());
+        }
         if (dto.getRemark() != null) {
             order.setRemark(dto.getRemark());
         }
@@ -419,6 +451,7 @@ public class SalesServiceImpl implements SalesService {
         }
 
         order.setStatus("completed"); // 已完成
+        order.setCompleteTime(LocalDateTime.now());
         salesOrderMapper.updateById(order);
         log.info("确认收货成功：orderId={}", orderId);
     }

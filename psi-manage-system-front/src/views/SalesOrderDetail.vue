@@ -26,11 +26,11 @@
         <el-descriptions-item label="商品分类">
           <el-tag type="info" effect="light">{{ productCategoryName }}</el-tag>
         </el-descriptions-item>
-        <el-descriptions-item label="订购数量"><span class="total-qty">{{ order?.quantity }} 台</span></el-descriptions-item>
+        <el-descriptions-item label="订购数量"><span class="total-qty">{{ order?.quantity }}</span></el-descriptions-item>
         <el-descriptions-item label="销售单价"><span class="unit-price">¥{{ order?.unitPrice || (order?.amount && order?.quantity ? (order?.amount / order?.quantity).toFixed(2) : '0.00') }}</span></el-descriptions-item>
         <el-descriptions-item label="订单金额"><span class="amount">¥{{ order?.amount }}</span></el-descriptions-item>
-        <el-descriptions-item label="已发货"><span class="shipped-qty">{{ shippedQuantity }} 台</span></el-descriptions-item>
-        <el-descriptions-item label="待发货"><span class="pending-qty">{{ pendingQuantity }} 台</span></el-descriptions-item>
+        <el-descriptions-item label="已发货"><span class="shipped-qty">{{ shippedQuantity }}</span></el-descriptions-item>
+        <el-descriptions-item label="待发货"><span class="pending-qty">{{ pendingQuantity }}</span></el-descriptions-item>
         <el-descriptions-item label="订单状态"><el-tag :type="getStatusType(order?.status)">{{ formatOrderStatus(order?.status) }}</el-tag></el-descriptions-item>
         <el-descriptions-item label="付款状态"><el-tag :type="getPayStatusType(order?.status === 'completed' ? 'paid' : order?.payStatus)">{{ formatPayStatus(order?.status === 'completed' ? 'paid' : order?.payStatus) }}</el-tag></el-descriptions-item>
         <el-descriptions-item label="付款方式">{{ order?.payMethod || '-' }}</el-descriptions-item>
@@ -44,10 +44,10 @@
     <el-card style="margin-top: 20px">
       <template #header><h3>发货进度</h3></template>
       <el-steps :active="getStepActive()" finish-status="success">
-        <el-step title="下单成功" description="订单已创建" />
-        <el-step title="付款确认" :description="(order?.payStatus === 'paid' || order?.status === 'completed') ? '付款已完成' : '等待付款'" />
-        <el-step title="发货处理" :description="order?.logisticsNo ? `已发货 ${shippedQuantity} 台` : order?.status === 'pending' ? `待发货 ${pendingQuantity} 台` : '处理中'" />
-        <el-step title="订单完成" :description="order?.status === 'completed' ? '订单已完成' : '等待完成'" />
+        <el-step title="下单成功" :description="stepDescriptions.place" />
+        <el-step title="付款确认" :description="stepDescriptions.pay" />
+        <el-step title="发货处理" :description="stepDescriptions.ship" />
+        <el-step title="订单完成" :description="stepDescriptions.complete" />
       </el-steps>
     </el-card>
 
@@ -65,13 +65,13 @@
           <el-button type="primary" link size="small" @click="copyTrackingNo" style="margin-left: 8px">复制</el-button>
         </el-descriptions-item>
         <el-descriptions-item label="发货仓库">{{ getWarehouseName(order?.warehouseId) || order?.warehouseName || order?.warehouse }}</el-descriptions-item>
-        <el-descriptions-item label="发货时间">{{ order?.shipTime }}</el-descriptions-item>
+        <el-descriptions-item label="发货时间">{{ formatTime(order?.shipTime) }}</el-descriptions-item>
       </el-descriptions>
       <el-divider content-position="left">收货地址</el-divider>
       <el-descriptions :column="2" border>
-        <el-descriptions-item label="收货人">{{ order?.receiverName }}</el-descriptions-item>
-        <el-descriptions-item label="联系电话">{{ order?.receiverPhone }}</el-descriptions-item>
-        <el-descriptions-item label="收货地址" :span="2">{{ order?.receiverAddress }}</el-descriptions-item>
+        <el-descriptions-item label="收货人">{{ order?.receiverName || '—' }}</el-descriptions-item>
+        <el-descriptions-item label="联系电话">{{ order?.receiverPhone || '—' }}</el-descriptions-item>
+        <el-descriptions-item label="收货地址" :span="2">{{ order?.receiverAddress || '—' }}</el-descriptions-item>
       </el-descriptions>
     </el-card>
 
@@ -97,6 +97,17 @@ const dataStore = useDataStore()
 
 const orderId = computed(() => route.params.id)
 const order = ref(null)
+
+/** 详情页拉取单笔订单，确保收货地址等字段与后端一致 */
+const fetchOrderDetail = async () => {
+  const id = Number(orderId.value)
+  if (!id) return
+  try {
+    order.value = await salesApi.get(id)
+  } catch {
+    order.value = dataStore.salesOrders.find((o) => o.id === id) || null
+  }
+}
 
 // 仓库列表
 const warehousesList = computed(() => dataStore.warehouses || [])
@@ -160,6 +171,37 @@ const formatPayStatus = (status) => {
   const statusMap = { 'unpaid': '待付款', 'paid': '已付款', 'refunded': '已退款', '待付款': '待付款', '已付款': '已付款', '已退款': '已退款' }
   return statusMap[status] || status
 }
+/** 发货进度各阶段说明（含 yyyy-MM-dd HH:mm:ss，与 formatTime 一致） */
+const stepDescriptions = computed(() => {
+  const o = order.value
+  if (!o) {
+    return { place: '—', pay: '—', ship: '—', complete: '—' }
+  }
+  const suffix = (t) => {
+    const s = formatTime(t)
+    return s !== '-' ? ` · ${s}` : ''
+  }
+  const paidOrComplete =
+    o.payStatus === 'paid' ||
+    o.payStatus === '已付款' ||
+    o.status === 'completed' ||
+    o.status === '已完成'
+  const shipDesc = o.logisticsNo
+    ? `已发货 ${shippedQuantity.value}${suffix(o.shipTime)}`
+    : o.status === 'pending' || o.status === '待发货'
+      ? `待发货 ${pendingQuantity.value}`
+      : '处理中'
+  return {
+    place: `订单已创建${suffix(o.createTime)}`,
+    pay: paidOrComplete ? `付款已完成${suffix(o.payTime)}` : '等待付款',
+    ship: shipDesc,
+    complete:
+      o.status === 'completed' || o.status === '已完成'
+        ? `订单已完成${suffix(o.completeTime)}`
+        : '等待完成'
+  }
+})
+
 const getStepActive = () => {
   // 已完成状态，所有步骤都完成
   if (order.value?.status === 'completed' || order.value?.status === '已完成') return 4
@@ -181,7 +223,7 @@ const loadOrderData = async () => {
     dataStore.loadWarehouses(),
     dataStore.loadCategories()
   ])
-  order.value = dataStore.salesOrders.find(o => o.id === Number(orderId.value))
+  await fetchOrderDetail()
 }
 
 onMounted(async () => {

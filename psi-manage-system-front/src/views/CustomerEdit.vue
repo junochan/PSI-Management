@@ -105,7 +105,7 @@ const submitEdit = async () => {
           name: customerForm.value.name,
           type: customerForm.value.type,
           vipLevel: customerForm.value.vipLevel,
-          phone: customerForm.value.phone,
+          contactPhone: customerForm.value.phone,
           address: customerForm.value.address,
           remark: customerForm.value.remark
         })

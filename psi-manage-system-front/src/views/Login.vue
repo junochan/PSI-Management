@@ -68,7 +68,7 @@ import { ElMessage } from 'element-plus'
 import { useUserStore } from '@/stores/user'
 import { useNavigationStore } from '@/stores/navigation'
 import { authApi } from '@/api'
-import { registerLayoutRoutes, clearLayoutDynamicRoutes } from '@/router/dynamic-routes'
+import { registerLayoutRoutes, clearLayoutDynamicRoutes, resolveSafeHomePath } from '@/router/dynamic-routes'
 import router from '@/router'
 
 const vueRouter = useRouter()
@@ -131,7 +131,15 @@ const handleLogin = async () => {
           localStorage.setItem('rememberedUser', loginForm.username)
         }
 
-        vueRouter.push(navigationStore.homePath || '/dashboard')
+        const safe = resolveSafeHomePath(navigationStore, router)
+        if (!safe) {
+          ElMessage.error('未找到可访问页面，请检查角色权限配置')
+          userStore.logout()
+          navigationStore.reset()
+          clearLayoutDynamicRoutes(router)
+          return
+        }
+        vueRouter.push(safe)
       } catch (error) {
         ElMessage.error(error.message || '登录失败，请检查用户名和密码')
       } finally {

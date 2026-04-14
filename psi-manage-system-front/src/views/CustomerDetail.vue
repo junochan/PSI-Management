@@ -69,7 +69,7 @@
           </template>
         </el-table-column>
         <el-table-column label="数量" width="80" align="center">
-          <template #default="{ row }">{{ row.quantity }} 台</template>
+          <template #default="{ row }">{{ row.quantity }}</template>
         </el-table-column>
         <el-table-column label="金额" width="100" align="right">
           <template #default="{ row }"><span class="amount">¥{{ (row.amount || 0).toLocaleString() }}</span></template>

@@ -18,7 +18,7 @@
           <el-tag :type="getTransferStatusType(transfer?.status)" effect="light">{{ formatTransferStatus(transfer?.status) }}</el-tag>
         </el-descriptions-item>
         <el-descriptions-item label="商品">{{ transfer?.product }}</el-descriptions-item>
-        <el-descriptions-item label="调拨数量">{{ transfer?.quantity }} 台</el-descriptions-item>
+        <el-descriptions-item label="调拨数量">{{ transfer?.quantity }}</el-descriptions-item>
         <el-descriptions-item label="调出仓库">
           <el-tag type="info" effect="light">{{ transfer?.from }}</el-tag>
         </el-descriptions-item>
@@ -58,7 +58,7 @@
           </div>
           <div class="meta-item">
             <el-icon><Sort /></el-icon>
-            <span>数量：{{ transfer?.quantity }} 台</span>
+            <span>数量：{{ transfer?.quantity }}</span>
           </div>
           <div class="meta-item">
             <el-icon><User /></el-icon>

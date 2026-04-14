@@ -26,6 +26,13 @@ public class ShippingDTO implements Serializable {
 
     private String logisticsNo;
 
+    /** 收货人（发货时落库到销售单，供详情展示） */
+    private String receiverName;
+
+    private String receiverPhone;
+
+    private String receiverAddress;
+
     private String remark;
 
 }

@@ -73,6 +73,16 @@ public class SalesOrder implements Serializable {
 
     private LocalDateTime shipTime;
 
+    /**
+     * 确认付款时间
+     */
+    private LocalDateTime payTime;
+
+    /**
+     * 确认收货/订单完成时间
+     */
+    private LocalDateTime completeTime;
+
     private LocalDate expectArriveDate;
 
     private Long operatorId;

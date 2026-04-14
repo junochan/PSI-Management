@@ -71,6 +71,9 @@ public class CustomerServiceImpl implements CustomerService {
 
     @Override
     public void createCustomer(CustomerDTO dto) {
+        if (!StringUtils.hasText(dto.getName())) {
+            throw new BusinessException("客户名称不能为空");
+        }
         // 检查编码是否重复
         if (StringUtils.hasText(dto.getCode())) {
             LambdaQueryWrapper<Customer> queryWrapper = new LambdaQueryWrapper<>();
@@ -112,15 +115,34 @@ public class CustomerServiceImpl implements CustomerService {
             }
         }
 
-        existing.setName(dto.getName());
-        existing.setCode(dto.getCode());
-        existing.setType(dto.getType());
-        existing.setContact(dto.getContactPerson());
-        existing.setPhone(dto.getContactPhone());
-        existing.setEmail(dto.getEmail());
-        existing.setAddress(dto.getAddress());
-        existing.setVipLevel(dto.getVipLevel());
-        existing.setRemark(dto.getRemark());
+        // 仅更新请求体中出现的字段，避免前端用 contact/phone 等别名时未传联系人导致被清空
+        if (dto.getName() != null) {
+            existing.setName(dto.getName());
+        }
+        if (dto.getCode() != null) {
+            existing.setCode(dto.getCode());
+        }
+        if (dto.getType() != null) {
+            existing.setType(dto.getType());
+        }
+        if (dto.getContactPerson() != null) {
+            existing.setContact(dto.getContactPerson());
+        }
+        if (dto.getContactPhone() != null) {
+            existing.setPhone(dto.getContactPhone());
+        }
+        if (dto.getEmail() != null) {
+            existing.setEmail(dto.getEmail());
+        }
+        if (dto.getAddress() != null) {
+            existing.setAddress(dto.getAddress());
+        }
+        if (dto.getVipLevel() != null) {
+            existing.setVipLevel(dto.getVipLevel());
+        }
+        if (dto.getRemark() != null) {
+            existing.setRemark(dto.getRemark());
+        }
 
         customerMapper.updateById(existing);
         log.info("更新客户成功：id={}, name={}", id, existing.getName());

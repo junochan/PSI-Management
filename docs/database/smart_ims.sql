@@ -448,6 +448,8 @@ CREATE TABLE `sales_order` (
   `warehouse_id` BIGINT DEFAULT NULL COMMENT '发货仓库ID',
   `warehouse_name` VARCHAR(100) DEFAULT NULL COMMENT '发货仓库名称',
   `ship_time` DATETIME DEFAULT NULL COMMENT '发货时间',
+  `pay_time` DATETIME DEFAULT NULL COMMENT '确认付款时间',
+  `complete_time` DATETIME DEFAULT NULL COMMENT '确认收货/订单完成时间',
   `expect_arrive_date` DATE DEFAULT NULL COMMENT '预计到达日期',
   `operator_id` BIGINT DEFAULT NULL COMMENT '操作人ID',
   `operator_name` VARCHAR(50) DEFAULT NULL COMMENT '操作人姓名',

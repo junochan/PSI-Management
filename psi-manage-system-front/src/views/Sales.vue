@@ -250,8 +250,8 @@
         </el-row>
         <el-row :gutter="20">
           <el-col :span="12">
-            <el-form-item label="商品选择" prop="product">
-              <el-select v-model="salesForm.productId" placeholder="请选择商品" style="width: 100%" filterable>
+            <el-form-item label="商品选择" prop="productId">
+              <el-select v-model="salesForm.productId" placeholder="请选择商品" style="width: 100%" filterable @change="onSalesProductChange">
                 <el-option v-for="p in products" :key="p.id" :label="p.name" :value="p.id" />
               </el-select>
             </el-form-item>
@@ -271,7 +271,20 @@
         <el-row :gutter="20">
           <el-col :span="12">
             <el-form-item label="销售数量" prop="quantity">
-              <el-input-number v-model="salesForm.quantity" :min="1" style="width: 100%" />
+              <el-input-number
+                v-model="salesForm.quantity"
+                :min="1"
+                :max="salesQtyMax"
+                :disabled="salesStockLoading || (salesProductStockRemain !== null && salesProductStockRemain <= 0)"
+                style="width: 100%"
+              />
+              <div v-if="salesForm.productId" class="sales-stock-tip">
+                <template v-if="salesStockLoading">正在查询库存…</template>
+                <template v-else-if="salesProductStockRemain !== null">
+                  库存剩余：<strong>{{ salesProductStockRemain }}</strong> 件
+                  <span v-if="salesProductStockRemain <= 0" class="sales-stock-warn">（当前无可用库存）</span>
+                </template>
+              </div>
             </el-form-item>
           </el-col>
           <el-col :span="12">
@@ -308,7 +321,11 @@
       </el-form>
       <template #footer>
         <el-button @click="salesDialogVisible = false">取消</el-button>
-        <el-button type="primary" @click="submitSales">确认创建</el-button>
+        <el-button
+          type="primary"
+          :disabled="salesStockLoading || (salesProductStockRemain !== null && salesProductStockRemain <= 0)"
+          @click="submitSales"
+        >确认创建</el-button>
       </template>
     </el-dialog>
 
@@ -491,14 +508,14 @@
         <el-row :gutter="20">
           <el-col :span="12">
             <el-form-item label="订单商品">
-              <el-input :value="`${shipForm.productName} (订单数量: ${shipForm.orderQuantity} 台)`" disabled />
+              <el-input :value="`${shipForm.productName} (订单数量: ${shipForm.orderQuantity})`" disabled />
             </el-form-item>
           </el-col>
           <el-col :span="12">
             <el-form-item label="当前库存">
               <div class="stock-info-display">
                 <span v-for="s in shipForm.stockInfo" :key="s.warehouseId" class="stock-item" :class="{ 'low-stock': s.stock < shipForm.orderQuantity }">
-                  {{ getWarehouseName(s.warehouseId) || s.warehouseName }}: {{ s.stock }} 台
+                  {{ getWarehouseName(s.warehouseId) || s.warehouseName }}: {{ s.stock }}
                 </span>
               </div>
             </el-form-item>
@@ -533,7 +550,7 @@
                 <el-option v-for="w in shipForm.stockInfo" :key="w.warehouseId" :label="getWarehouseName(w.warehouseId) || w.warehouseName" :value="w.warehouseId">
                   <div style="display: flex; justify-content: space-between;">
                     <span>{{ getWarehouseName(w.warehouseId) || w.warehouseName }}</span>
-                    <span :style="{ color: w.stock < shipForm.orderQuantity ? '#E6A23C' : '#67C23A' }">库存: {{ w.stock }} 台</span>
+                    <span :style="{ color: w.stock < shipForm.orderQuantity ? '#E6A23C' : '#67C23A' }">库存: {{ w.stock }}</span>
                   </div>
                 </el-option>
               </el-select>
@@ -578,13 +595,14 @@
 
 <script setup>
 import { ref, computed, onMounted, watch } from 'vue'
-import { useRouter } from 'vue-router'
+import { useRouter, useRoute } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { useDataStore } from '@/stores/data'
 import { useUserStore } from '@/stores/user'
-import { salesApi, customerApi, aftersalesApi } from '@/api'
+import { salesApi, customerApi, aftersalesApi, inventoryApi } from '@/api'
 
 const router = useRouter()
+const route = useRoute()
 const dataStore = useDataStore()
 const userStore = useUserStore()
 
@@ -794,10 +812,65 @@ const loadData = async () => {
 }
 
 const salesForm = ref({ customerId: null, date: new Date(), productId: null, quantity: 1, payMethod: '银行转账', invoiceType: '不需要发票', remark: '' })
-const salesRules = {
+/** 选中商品在各仓库存合计；null 表示未选商品或尚未拉取 */
+const salesProductStockRemain = ref(null)
+const salesStockLoading = ref(false)
+
+const salesQtyMax = computed(() => {
+  if (salesProductStockRemain.value == null || salesProductStockRemain.value <= 0) return undefined
+  return salesProductStockRemain.value
+})
+
+const salesRules = computed(() => ({
   customerId: [{ required: true, message: '请选择客户', trigger: 'change' }],
   productId: [{ required: true, message: '请选择商品', trigger: 'change' }],
-  quantity: [{ required: true, message: '请输入数量', trigger: 'blur' }]
+  quantity: [
+    { required: true, message: '请输入数量', trigger: 'blur' },
+    {
+      validator: (rule, value, callback) => {
+        if (value == null || value === '') {
+          callback()
+          return
+        }
+        if (salesProductStockRemain.value != null && salesProductStockRemain.value > 0 && value > salesProductStockRemain.value) {
+          callback(new Error(`销售数量不能大于库存剩余（${salesProductStockRemain.value} 件）`))
+          return
+        }
+        if (salesProductStockRemain.value != null && salesProductStockRemain.value <= 0) {
+          callback(new Error('当前商品无可用库存'))
+          return
+        }
+        callback()
+      },
+      trigger: ['blur', 'change']
+    }
+  ]
+}))
+
+const fetchSalesProductStock = async (productId) => {
+  if (!productId) {
+    salesProductStockRemain.value = null
+    return
+  }
+  salesStockLoading.value = true
+  try {
+    const list = await inventoryApi.byProduct(productId)
+    const rows = Array.isArray(list) ? list : []
+    const total = rows.reduce((s, r) => s + (Number(r.stock) || 0), 0)
+    salesProductStockRemain.value = total
+    if (total > 0) {
+      salesForm.value.quantity = Math.min(Math.max(1, salesForm.value.quantity), total)
+    }
+  } catch (e) {
+    salesProductStockRemain.value = null
+    ElMessage.error(e.message || '加载库存失败')
+  } finally {
+    salesStockLoading.value = false
+  }
+}
+
+const onSalesProductChange = (productId) => {
+  fetchSalesProductStock(productId)
 }
 
 const customerForm = ref({ name: '', type: '个人', address: '', contact: '', phone: '', email: '', remark: '' })
@@ -849,7 +922,24 @@ const shipRules = {
   receiverAddress: [{ required: true, message: '请输入收货地址', trigger: 'blur' }]
 }
 
-const getCustomerPhone = (id) => customers.value.find(c => c.id === id)?.phone || ''
+const getCustomerPhone = (id) => customers.value.find(c => Number(c.id) === Number(id))?.phone || ''
+
+/** 发货回填：按客户 ID 解析档案（ID 类型统一 + 列表不全时拉详情） */
+const resolveCustomerForShipment = async (customerId) => {
+  if (customerId == null || customerId === '') return null
+  const idNum = Number(customerId)
+  const fromList = (list) => (list || []).find((c) => Number(c?.id) === idNum)
+  let c = fromList(customers.value)
+  if (c) return c
+  await dataStore.loadCustomers()
+  c = fromList(customers.value)
+  if (c) return c
+  try {
+    return await customerApi.get(customerId)
+  } catch {
+    return null
+  }
+}
 const getSalePrice = () => {
   const p = products.value.find(p => p.id === salesForm.value.productId)
   return p ? `¥${p.salePrice}` : ''
@@ -965,6 +1055,7 @@ const openSalesDialog = async () => {
   }
   await loadData()
   salesForm.value = { customerId: null, date: new Date(), productId: null, quantity: 1, payMethod: '银行转账', invoiceType: '不需要发票', remark: '' }
+  salesProductStockRemain.value = null
   salesDialogVisible.value = true
 }
 const openCustomerDialog = () => {
@@ -991,6 +1082,18 @@ const submitSales = async () => {
     return
   }
   if (!salesFormRef.value) return
+  if (salesForm.value.productId && salesStockLoading.value) {
+    ElMessage.warning('正在查询库存，请稍候')
+    return
+  }
+  if (salesProductStockRemain.value != null && salesForm.value.quantity > salesProductStockRemain.value) {
+    ElMessage.warning('销售数量不能大于库存剩余')
+    return
+  }
+  if (salesProductStockRemain.value !== null && salesProductStockRemain.value <= 0) {
+    ElMessage.warning('当前商品无可用库存')
+    return
+  }
   await salesFormRef.value.validate(async (valid) => {
     if (valid) {
       loading.value = true
@@ -1031,12 +1134,13 @@ const submitCustomer = async () => {
     if (valid) {
       loading.value = true
       try {
+        // 与后端 CustomerDTO（contactPerson / contactPhone）一致，避免仅依赖别名导致遗漏
         const customerData = {
           name: customerForm.value.name,
           type: customerForm.value.type,
           address: customerForm.value.address,
-          contact: customerForm.value.contact,
-          phone: customerForm.value.phone,
+          contactPerson: customerForm.value.contact,
+          contactPhone: customerForm.value.phone,
           email: customerForm.value.email,
           remark: customerForm.value.remark
         }
@@ -1120,9 +1224,15 @@ const handleShip = async (row) => {
     ElMessage.warning('无发货权限')
     return
   }
-  await dataStore.loadInventory()
-  await dataStore.loadWarehouses()
-  const customer = customers.value.find(c => c.id === row.customerId)
+  await Promise.all([dataStore.loadInventory(), dataStore.loadWarehouses()])
+  const customer = await resolveCustomerForShipment(row.customerId)
+  const receiverName =
+    (customer?.contact && String(customer.contact).trim()) ||
+    customer?.name ||
+    row.receiverName ||
+    ''
+  const receiverPhone = customer?.phone || row.receiverPhone || ''
+  const receiverAddress = customer?.address || row.receiverAddress || ''
 
   // 获取商品库存信息
   const stockInfo = inventoryData.value
@@ -1165,10 +1275,10 @@ const handleShip = async (row) => {
     warehouse: stockInfo[0]?.warehouseName || getWarehouseName(stockInfo[0]?.warehouseId) || '',
     warehouseId: stockInfo[0]?.warehouseId || 1,
     estimatedDate: new Date(Date.now() + 3 * 24 * 60 * 60 * 1000),
-    receiverName: customer?.contact || row.receiverName || '',
-    receiverPhone: customer?.phone || row.receiverPhone || '',
+    receiverName,
+    receiverPhone,
     receiverPhone2: '',
-    receiverAddress: customer?.address || row.receiverAddress || '',
+    receiverAddress,
     remark: '',
     stockInfo: stockInfo
   }
@@ -1199,6 +1309,9 @@ const submitShip = async () => {
           quantity: shipForm.value.shipQuantity,
           logisticsCompany: shipForm.value.logisticsCompany,
           logisticsNo: shipForm.value.trackingNo,
+          receiverName: shipForm.value.receiverName || undefined,
+          receiverPhone: [shipForm.value.receiverPhone, shipForm.value.receiverPhone2].filter(Boolean).join(' / ') || undefined,
+          receiverAddress: shipForm.value.receiverAddress || undefined,
           remark: shipForm.value.remark || undefined
         })
         ElMessage.success(`订单 ${shipForm.value.orderNo} 已发货，物流单号: ${shipForm.value.trackingNo}`)
@@ -1320,9 +1433,22 @@ const closeAftersalesOrder = async (row) => {
 
 const printOrder = () => { ElMessage.success('打印订单功能已触发'); orderDetailVisible.value = false }
 
-// 初始化加载
-onMounted(() => {
-  loadData()
+// 初始化加载（详情页「确认发货」带 shipOrderId 时自动打开发货弹窗）
+onMounted(async () => {
+  await loadData()
+  const shipOid = route.query.shipOrderId
+  if (!shipOid) return
+  let row = null
+  try {
+    row = await salesApi.get(Number(shipOid))
+  } catch {
+    row = (dataStore.salesOrders || []).find((o) => String(o.id) === String(shipOid)) || null
+  }
+  await router.replace({ path: route.path, query: {} })
+  if (row && canShipOrder.value && row.status === 'pending' && row.payStatus === 'paid') {
+    activeTab.value = 'orders'
+    await handleShip(row)
+  }
 })
 </script>
 
@@ -1377,6 +1503,13 @@ onMounted(() => {
   .stock-info-display { display: flex; flex-wrap: wrap; gap: 8px; }
   .stock-item { padding: 4px 12px; border-radius: 4px; background: rgba(103, 194, 58, 0.1); color: #67C23A; font-size: 13px; font-weight: 500; }
   .stock-item.low-stock { background: rgba(230, 162, 60, 0.1); color: #E6A23C; }
+
+  .sales-stock-tip {
+    margin-top: 6px;
+    font-size: 12px;
+    color: #606266;
+    .sales-stock-warn { color: #F56C6C; margin-left: 4px; }
+  }
 
   // 查询结果统计
   .query-stats {
