@@ -136,4 +136,11 @@ export function registerEntities (program, ctx) {
       await getApi(cmd).delete('/warehouses/batch', { data: body })
       printJson({ ok: true })
     })
+
+  program
+    .command('supplier-industries')
+    .description('GET /supplier-industries 供应商行业字典（下拉）')
+    .action(async (_opts, cmd) => {
+      printJson(await getApi(cmd).get('/supplier-industries'))
+    })
 }

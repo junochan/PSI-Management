@@ -17,11 +17,14 @@ import com.smartims.service.AftersalesService;
 import com.smartims.util.CodeGenerator;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.dao.DuplicateKeyException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
+import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
 
 /**
  * 售后服务实现类
@@ -33,6 +36,9 @@ import java.time.LocalDateTime;
 @Service
 @RequiredArgsConstructor
 public class AftersalesServiceImpl implements AftersalesService {
+
+    private static final DateTimeFormatter AFTERSALES_ORDER_DATE = DateTimeFormatter.ofPattern("yyMMdd");
+    private static final int MAX_AFTERSALES_ORDER_NO_ATTEMPTS = 5;
 
     private final AftersalesOrderMapper aftersalesOrderMapper;
     private final SalesOrderMapper salesOrderMapper;
@@ -91,7 +97,6 @@ public class AftersalesServiceImpl implements AftersalesService {
 
         // 创建售后工单
         AftersalesOrder order = new AftersalesOrder();
-        order.setOrderNo(CodeGenerator.generateAftersalesOrderNo());
         order.setSalesOrderId(dto.getSalesOrderId());
         order.setSalesOrderNo(salesOrder.getOrderNo());
         order.setCustomerId(salesOrder.getCustomerId());
@@ -103,8 +108,41 @@ public class AftersalesServiceImpl implements AftersalesService {
         order.setStatus("待处理"); // 待处理
         order.setRemark(dto.getRemark());
 
-        aftersalesOrderMapper.insert(order);
-        log.info("创建售后工单成功：orderNo={}", order.getOrderNo());
+        for (int attempt = 0; attempt < MAX_AFTERSALES_ORDER_NO_ATTEMPTS; attempt++) {
+            order.setOrderNo(allocateAftersalesOrderNo());
+            try {
+                aftersalesOrderMapper.insert(order);
+                log.info("创建售后工单成功：orderNo={}", order.getOrderNo());
+                return;
+            } catch (DuplicateKeyException e) {
+                log.warn("售后单号冲突，重新分配 attempt={} orderNo={}", attempt + 1, order.getOrderNo());
+                if (attempt == MAX_AFTERSALES_ORDER_NO_ATTEMPTS - 1) {
+                    throw new BusinessException("售后单号生成失败，请稍后重试");
+                }
+            }
+        }
+    }
+
+    /**
+     * 生成当日唯一售后单号，与 {@link CodeGenerator#generateAftersalesOrderNo()} 格式一致。
+     */
+    private String allocateAftersalesOrderNo() {
+        String dateStr = LocalDate.now().format(AFTERSALES_ORDER_DATE);
+        String prefix = CodeGenerator.AFTERSALES_PREFIX + dateStr;
+        String maxNo = aftersalesOrderMapper.selectMaxOrderNoByDatePrefix(prefix);
+        int nextSeq = 1;
+        if (maxNo != null && maxNo.length() >= prefix.length() + 4) {
+            try {
+                String tail = maxNo.substring(maxNo.length() - 4);
+                nextSeq = Integer.parseInt(tail) + 1;
+            } catch (NumberFormatException ignored) {
+                nextSeq = 1;
+            }
+        }
+        if (nextSeq < 1 || nextSeq > 9999) {
+            throw new BusinessException("当日售后单序号已用尽，请联系管理员");
+        }
+        return prefix + String.format("%04d", nextSeq);
     }
 
     @Override

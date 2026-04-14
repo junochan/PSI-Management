@@ -74,7 +74,7 @@
           <el-input v-model="searchKeyword" placeholder="搜索商品..." prefix-icon="Search" clearable style="width: 200px" />
         </div>
       </template>
-      <el-table :data="filteredStock" style="width: 100%">
+      <el-table :data="filteredStock" empty-text="暂无数据" style="width: 100%">
         <el-table-column label="SKU" width="120">
           <template #default="{ row }"><span class="sku">{{ row.sku }}</span></template>
         </el-table-column>

@@ -2,7 +2,7 @@
   <div class="inventory-page">
     <el-tabs v-model="activeTab" class="page-tabs">
       <!-- 库存管理 -->
-      <el-tab-pane label="库存管理" name="stock">
+      <el-tab-pane v-if="canInventoryStockTab" label="库存管理" name="stock">
         <el-card>
           <template #header>
             <div class="card-header">
@@ -38,6 +38,7 @@
                 />
                 <el-input v-model="searchKeyword" placeholder="搜索SKU..." prefix-icon="Search" clearable style="width: 140px" />
                 <el-upload
+                  v-if="canInventoryRead"
                   accept="image/*"
                   :auto-upload="false"
                   :show-file-list="false"
@@ -47,6 +48,7 @@
                 </el-upload>
                 <img v-if="queryImageDataUrl" :src="queryImageDataUrl" class="image-query-thumb" alt="" />
                 <el-input-number
+                  v-if="canInventoryRead"
                   v-model="imageSimilarityThreshold"
                   :min="0.2"
                   :max="0.99"
@@ -55,16 +57,16 @@
                   size="small"
                   style="width: 108px"
                 />
-                <el-button type="primary" size="small" :loading="imageSearchLoading" @click="submitImageSearch">以图搜图</el-button>
+                <el-button v-if="canInventoryRead" type="primary" size="small" :loading="imageSearchLoading" @click="submitImageSearch">以图搜图</el-button>
                 <el-button v-if="imageSearchMode" type="info" size="small" link @click="exitImageSearch">退出图搜</el-button>
                 <div class="header-actions-inout">
-                  <el-button type="success" @click="openManualInboundDialog"><el-icon><Plus /></el-icon>手动入库</el-button>
-                  <el-button type="warning" @click="openManualOutboundDialog"><el-icon><Minus /></el-icon>手动出库</el-button>
+                  <el-button v-if="canInventoryInbound" type="success" @click="openManualInboundDialog"><el-icon><Plus /></el-icon>手动入库</el-button>
+                  <el-button v-if="canInventoryOutbound" type="warning" @click="openManualOutboundDialog"><el-icon><Minus /></el-icon>手动出库</el-button>
                 </div>
               </div>
             </div>
           </template>
-          <el-table :data="paginatedInventory" style="width: 100%" :max-height="500" table-layout="fixed">
+          <el-table :data="paginatedInventory" empty-text="暂无数据" style="width: 100%" :max-height="500" table-layout="fixed">
             <el-table-column label="SKU" min-width="100" show-overflow-tooltip>
               <template #default="{ row }"><span class="sku">{{ row.sku }}</span></template>
             </el-table-column>
@@ -108,8 +110,8 @@
             <el-table-column label="操作" width="160" fixed="right" align="center">
               <template #default="{ row }">
                 <el-button type="primary" link size="small" @click="viewStockDetail(row)">详情</el-button>
-                <el-button type="success" link size="small" @click="openStockInbound(row)">入库</el-button>
-                <el-button type="warning" link size="small" @click="openStockOutbound(row)">出库</el-button>
+                <el-button v-if="canInventoryInbound" type="success" link size="small" @click="openStockInbound(row)">入库</el-button>
+                <el-button v-if="canInventoryOutbound" type="warning" link size="small" @click="openStockOutbound(row)">出库</el-button>
               </template>
             </el-table-column>
           </el-table>
@@ -128,15 +130,15 @@
       </el-tab-pane>
 
       <!-- 调拨记录 -->
-      <el-tab-pane label="调拨记录" name="transfer">
+      <el-tab-pane v-if="canInventoryTransferTab" label="调拨记录" name="transfer">
         <el-card>
           <template #header>
             <div class="card-header">
               <h3>调拨记录</h3>
-              <el-button type="primary" @click="openTransferDialog()"><el-icon><Plus /></el-icon>新建调拨</el-button>
+              <el-button v-if="canTransferOp" type="primary" @click="openTransferDialog()"><el-icon><Plus /></el-icon>新建调拨</el-button>
             </div>
           </template>
-          <el-table :data="paginatedTransfers" style="width: 100%" :max-height="500" table-layout="fixed">
+          <el-table :data="paginatedTransfers" empty-text="暂无数据" style="width: 100%" :max-height="500" table-layout="fixed">
             <el-table-column label="单号" min-width="132" show-overflow-tooltip>
               <template #default="{ row }"><span class="order-no">{{ row.orderNo }}</span></template>
             </el-table-column>
@@ -159,7 +161,13 @@
             <el-table-column label="操作" width="120" fixed="right" align="center">
               <template #default="{ row }">
                 <el-button type="primary" link size="small" @click="viewTransferDetail(row)">详情</el-button>
-                <el-button type="success" link size="small" @click="confirmTransfer(row)" v-if="row.status === 'pending'">确认</el-button>
+                <el-button
+                  v-if="canTransferOp && row.status === 'pending'"
+                  type="success"
+                  link
+                  size="small"
+                  @click="confirmTransfer(row)"
+                >确认</el-button>
               </template>
             </el-table-column>
           </el-table>
@@ -176,12 +184,12 @@
       </el-tab-pane>
 
       <!-- 出入库记录 -->
-      <el-tab-pane label="出入库记录" name="records">
+      <el-tab-pane v-if="canInventoryRecordsTab" label="出入库记录" name="records">
         <el-tabs v-model="recordsSubTab" type="card">
           <!-- 入库记录 -->
           <el-tab-pane label="入库记录" name="inbound">
             <el-card>
-              <el-table :data="paginatedRecordsInbound" style="width: 100%" :max-height="500">
+              <el-table :data="paginatedRecordsInbound" empty-text="暂无数据" style="width: 100%" :max-height="500">
                 <el-table-column label="入库单号" width="140">
                   <template #default="{ row }"><span class="order-no success">{{ row.orderNo }}</span></template>
                 </el-table-column>
@@ -200,7 +208,7 @@
                 <el-table-column label="仓库" min-width="120" show-overflow-tooltip>
                   <template #default="{ row }">{{ getWarehouseName(row.warehouseId) || row.warehouseName || row.warehouse }}</template>
                 </el-table-column>
-                <el-table-column label="入库时间" width="160" show-overflow-tooltip>
+                <el-table-column label="入库时间" min-width="176" show-overflow-tooltip>
                   <template #default="{ row }">{{ row.createTime || row.time }}</template>
                 </el-table-column>
                 <el-table-column label="操作人" width="100" show-overflow-tooltip>
@@ -224,7 +232,7 @@
           <!-- 出库记录 -->
           <el-tab-pane label="出库记录" name="outbound">
             <el-card>
-              <el-table :data="paginatedRecordsOutbound" style="width: 100%" :max-height="500">
+              <el-table :data="paginatedRecordsOutbound" empty-text="暂无数据" style="width: 100%" :max-height="500">
                 <el-table-column label="出库单号" width="140">
                   <template #default="{ row }"><span class="order-no warning">{{ row.orderNo }}</span></template>
                 </el-table-column>
@@ -243,7 +251,7 @@
                 <el-table-column label="仓库" min-width="120" show-overflow-tooltip>
                   <template #default="{ row }">{{ getWarehouseName(row.warehouseId) || row.warehouseName || row.warehouse }}</template>
                 </el-table-column>
-                <el-table-column label="出库时间" width="160" show-overflow-tooltip>
+                <el-table-column label="出库时间" min-width="176" show-overflow-tooltip>
                   <template #default="{ row }">{{ row.createTime || row.time }}</template>
                 </el-table-column>
                 <el-table-column label="操作人" width="100" show-overflow-tooltip>
@@ -268,8 +276,9 @@
       </el-tab-pane>
 
       <!-- 仓库管理 -->
-      <el-tab-pane label="仓库管理" name="warehouse">
-        <div class="warehouse-grid">
+      <el-tab-pane v-if="canInventoryWarehouseTab" label="仓库管理" name="warehouse">
+        <el-empty v-if="!warehousesList.length" class="grid-empty" description="暂无数据" :image-size="80" />
+        <div v-else class="warehouse-grid">
           <el-card class="warehouse-card" v-for="w in warehousesList" :key="w.id">
             <div class="warehouse-header">
               <div class="warehouse-icon"><el-icon><Shop /></el-icon></div>
@@ -287,12 +296,12 @@
             </div>
             <div class="warehouse-actions">
               <el-button type="primary" @click="viewWarehouseDetail(w)">查看详情</el-button>
-              <el-button @click="editWarehouse(w)">编辑</el-button>
-              <el-button type="danger" @click="deleteWarehouse(w)" :disabled="w.totalStock > 0">删除</el-button>
+              <el-button v-if="canInventoryWarehouse" @click="editWarehouse(w)">编辑</el-button>
+              <el-button v-if="canInventoryWarehouse" type="danger" @click="deleteWarehouse(w)" :disabled="w.totalStock > 0">删除</el-button>
             </div>
           </el-card>
         </div>
-        <el-button type="primary" class="add-warehouse-btn" @click="openWarehouseDialog"><el-icon><Plus /></el-icon>添加仓库</el-button>
+        <el-button v-if="canInventoryWarehouse" type="primary" class="add-warehouse-btn" @click="openWarehouseDialog"><el-icon><Plus /></el-icon>添加仓库</el-button>
       </el-tab-pane>
     </el-tabs>
 
@@ -370,7 +379,11 @@
       </el-descriptions>
       <template #footer>
         <el-button @click="transferDetailVisible = false">关闭</el-button>
-        <el-button type="success" @click="confirmTransfer(currentTransfer)" v-if="currentTransfer?.status === 'pending'">确认调拨</el-button>
+        <el-button
+          v-if="canTransferOp && currentTransfer?.status === 'pending'"
+          type="success"
+          @click="confirmTransfer(currentTransfer)"
+        >确认调拨</el-button>
       </template>
     </el-dialog>
 
@@ -422,7 +435,7 @@
 
       <!-- 仓库内库存商品列表 -->
       <el-divider content-position="left">库存商品</el-divider>
-      <el-table :data="paginatedWarehouseInventoryList" style="width: 100%" max-height="300" size="small">
+      <el-table :data="paginatedWarehouseInventoryList" empty-text="暂无数据" style="width: 100%" max-height="300" size="small">
         <el-table-column label="SKU" width="100">
           <template #default="{ row }"><span class="sku">{{ row.sku }}</span></template>
         </el-table-column>
@@ -453,7 +466,7 @@
 
       <template #footer>
         <el-button @click="warehouseDetailVisible = false">关闭</el-button>
-        <el-button type="primary" @click="editWarehouse(currentWarehouse)">编辑</el-button>
+        <el-button v-if="canInventoryWarehouse" type="primary" @click="editWarehouse(currentWarehouse)">编辑</el-button>
       </template>
     </el-dialog>
 
@@ -474,19 +487,19 @@
         <el-descriptions-item label="分类">{{ getCategoryName(currentStock?.productId) || currentStock?.category || '-' }}</el-descriptions-item>
         <el-descriptions-item label="所属仓库"><span class="warehouse-name">{{ getWarehouseName(currentStock?.warehouseId) || currentStock?.warehouseName }}</span></el-descriptions-item>
         <el-descriptions-item label="库位">
-          <el-input v-model="stockLocationEdit" size="small" style="width: 120px" placeholder="输入库位" />
-          <el-button type="primary" size="small" @click="updateLocation" style="margin-left: 8px">更新</el-button>
+          <el-input v-model="stockLocationEdit" size="small" style="width: 120px" placeholder="输入库位" :disabled="!canInventoryAdjust" />
+          <el-button v-if="canInventoryAdjust" type="primary" size="small" @click="updateLocation" style="margin-left: 8px">更新</el-button>
         </el-descriptions-item>
         <el-descriptions-item label="当前库存">
           <span :class="{ 'low-stock': currentStock?.stock < currentStock?.safeStock }">{{ currentStock?.stock }} 件</span>
         </el-descriptions-item>
         <el-descriptions-item label="库存预警值">
-          <el-input-number v-model="stockSafeStockEdit" :min="0" size="small" style="width: 100px" />
-          <el-button type="primary" size="small" @click="updateSafeStock" style="margin-left: 8px">更新</el-button>
+          <el-input-number v-model="stockSafeStockEdit" :min="0" size="small" style="width: 100px" :disabled="!canInventoryAdjust" />
+          <el-button v-if="canInventoryAdjust" type="primary" size="small" @click="updateSafeStock" style="margin-left: 8px">更新</el-button>
         </el-descriptions-item>
         <el-descriptions-item label="呆滞预警天数">
-          <el-input-number v-model="stockStagnantDaysEdit" :min="1" size="small" style="width: 100px" />
-          <el-button type="primary" size="small" @click="updateStagnantDays" style="margin-left: 8px">更新</el-button>
+          <el-input-number v-model="stockStagnantDaysEdit" :min="1" size="small" style="width: 100px" :disabled="!canInventoryAdjust" />
+          <el-button v-if="canInventoryAdjust" type="primary" size="small" @click="updateStagnantDays" style="margin-left: 8px">更新</el-button>
         </el-descriptions-item>
         <el-descriptions-item label="呆滞状态">
           <el-tag :type="getStagnantStatusType(currentStock)" effect="light">{{ getStagnantStatusText(currentStock) }}</el-tag>
@@ -502,7 +515,7 @@
 
       <!-- 入库记录 -->
       <el-divider content-position="left">入库记录</el-divider>
-      <el-table :data="stockInboundRecords" style="width: 100%" max-height="200" size="small">
+      <el-table :data="stockInboundRecords" empty-text="暂无数据" style="width: 100%" max-height="200" size="small">
         <el-table-column label="入库单号" width="120">
           <template #default="{ row }"><span class="order-no success">{{ row.orderNo }}</span></template>
         </el-table-column>
@@ -519,7 +532,7 @@
 
       <!-- 出库记录 -->
       <el-divider content-position="left">出库记录</el-divider>
-      <el-table :data="stockOutboundRecords" style="width: 100%" max-height="200" size="small">
+      <el-table :data="stockOutboundRecords" empty-text="暂无数据" style="width: 100%" max-height="200" size="small">
         <el-table-column label="出库单号" width="120">
           <template #default="{ row }"><span class="order-no warning">{{ row.orderNo }}</span></template>
         </el-table-column>
@@ -536,9 +549,13 @@
 
       <template #footer>
         <el-button @click="stockDetailVisible = false">关闭</el-button>
-        <el-button type="success" @click="openStockInbound(currentStock)">入库</el-button>
-        <el-button type="warning" @click="openStockOutbound(currentStock)">出库</el-button>
-        <el-button type="primary" @click="openPurchaseFromStock(currentStock)" v-if="currentStock?.stock < currentStock?.safeStock">创建采购</el-button>
+        <el-button v-if="canInventoryInbound" type="success" @click="openStockInbound(currentStock)">入库</el-button>
+        <el-button v-if="canInventoryOutbound" type="warning" @click="openStockOutbound(currentStock)">出库</el-button>
+        <el-button
+          v-if="canPurchaseAdd && currentStock?.stock < currentStock?.safeStock"
+          type="primary"
+          @click="openPurchaseFromStock(currentStock)"
+        >创建采购</el-button>
       </template>
     </el-dialog>
 
@@ -914,13 +931,88 @@ import { ref, computed, onMounted, watch } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { useDataStore } from '@/stores/data'
+import { useUserStore } from '@/stores/user'
 import { inventoryApi, warehouseApi, purchaseApi, salesApi } from '@/api'
 
 const router = useRouter()
 const route = useRoute()
 const dataStore = useDataStore()
+const userStore = useUserStore()
+
+const hasInventoryMenu = computed(() => userStore.hasPermission('inventory'))
+
+/** 与后端 GET /inventory 可读范围一致，用于列表、以图搜图等 */
+const canInventoryRead = computed(() =>
+  hasInventoryMenu.value ||
+  userStore.hasPermission('inventory:view') ||
+  userStore.hasPermission('inventory:records') ||
+  userStore.hasPermission('inventory:transfer') ||
+  userStore.hasPermission('inventory:warehouse') ||
+  userStore.hasPermission('inventory:inbound') ||
+  userStore.hasPermission('inventory:outbound') ||
+  userStore.hasPermission('inventory:adjust') ||
+  userStore.hasPermission('sales') ||
+  userStore.hasPermission('sales:view') ||
+  userStore.hasPermission('purchase') ||
+  userStore.hasPermission('purchase:view')
+)
+/** 各 Tab 与角色里「库存查看 / 出入库记录 / 仓库管理 / 调拨」等子权限对齐 */
+const canInventoryStockTab = computed(
+  () =>
+    hasInventoryMenu.value ||
+    userStore.hasPermission('inventory:view') ||
+    userStore.hasPermission('inventory:transfer') ||
+    userStore.hasPermission('inventory:inbound') ||
+    userStore.hasPermission('inventory:outbound') ||
+    userStore.hasPermission('inventory:warehouse') ||
+    userStore.hasPermission('inventory:adjust') ||
+    userStore.hasPermission('purchase') ||
+    userStore.hasPermission('purchase:view') ||
+    userStore.hasPermission('sales') ||
+    userStore.hasPermission('sales:view')
+)
+/**
+ * 出入库记录 Tab：仅 inventory:records（勿并入 in/out 操作码：仅有入库/出库操作权也会误显本 Tab）
+ */
+const canInventoryRecordsTab = computed(() => userStore.hasPermission('inventory:records'))
+/** 仓库管理 Tab：仅 inventory:warehouse（父级菜单码 alone 不解锁） */
+const canInventoryWarehouseTab = computed(() => userStore.hasPermission('inventory:warehouse'))
+const canInventoryTransferTab = computed(() => userStore.hasPermission('inventory:transfer'))
+/** 菜单码 inventory 仍表示「全部库存能力」；否则按细粒度码控制 */
+const canInventoryWarehouse = computed(
+  () => hasInventoryMenu.value || userStore.hasPermission('inventory:warehouse')
+)
+const canInventoryInbound = computed(
+  () => hasInventoryMenu.value || userStore.hasPermission('inventory:inbound')
+)
+const canInventoryOutbound = computed(
+  () => hasInventoryMenu.value || userStore.hasPermission('inventory:outbound')
+)
+const canInventoryAdjust = computed(
+  () => hasInventoryMenu.value || userStore.hasPermission('inventory:adjust')
+)
+const canTransferOp = computed(
+  () => hasInventoryMenu.value || userStore.hasPermission('inventory:transfer')
+)
+const canPurchaseAdd = computed(() => userStore.hasPermission('purchase:add'))
 
 const activeTab = ref('stock')
+
+const syncActiveTabToPermissions = () => {
+  const allowed = {
+    stock: canInventoryStockTab.value,
+    transfer: canInventoryTransferTab.value,
+    records: canInventoryRecordsTab.value,
+    warehouse: canInventoryWarehouseTab.value
+  }
+  const cur = activeTab.value
+  if (allowed[cur]) return
+  if (allowed.stock) activeTab.value = 'stock'
+  else if (allowed.records) activeTab.value = 'records'
+  else if (allowed.transfer) activeTab.value = 'transfer'
+  else if (allowed.warehouse) activeTab.value = 'warehouse'
+}
+
 const recordsSubTab = ref('inbound')
 const searchKeyword = ref('')
 const queryImageDataUrl = ref('')
@@ -1158,21 +1250,30 @@ watch([inventoryCurrentPage, inventoryPageSize], () => {
   if (!imageSearchMode.value) fetchInventoryTable()
 })
 
-// 加载所有数据
+// 加载所有数据（无「出入库记录」权限时不拉入库流水/销售订单拼出库，避免越权与多余请求）
 const loadData = async () => {
   loading.value = true
   try {
-    await Promise.all([
+    const tasks = [
       dataStore.loadInventory(),
       dataStore.loadTransfers(),
       dataStore.loadProducts(),
       dataStore.loadWarehouses(),
       dataStore.loadCategories(),
-      dataStore.loadPurchaseOrders(),
-      dataStore.loadInboundRecords(),
-      dataStore.loadOutboundRecords(),
-      dataStore.loadSalesOrders()
-    ])
+      dataStore.loadPurchaseOrders()
+    ]
+    if (
+      canInventoryRecordsTab.value ||
+      canInventoryOutbound.value ||
+      userStore.hasPermission('sales') ||
+      userStore.hasPermission('sales:view')
+    ) {
+      tasks.push(dataStore.loadSalesOrders())
+    }
+    if (canInventoryRecordsTab.value) {
+      tasks.push(dataStore.loadInboundRecords(), dataStore.loadOutboundRecords())
+    }
+    await Promise.all(tasks)
     await loadStats()
     await fetchInventoryTable(false)
   } finally {
@@ -1191,6 +1292,10 @@ const onInventoryQueryImageChange = (uploadFile) => {
 }
 
 const submitImageSearch = async () => {
+  if (!canInventoryRead.value) {
+    ElMessage.warning('无库存数据查看权限')
+    return
+  }
   if (!queryImageDataUrl.value) {
     ElMessage.warning('请先上传图片')
     return
@@ -1607,6 +1712,10 @@ const getTransferStatusType = (status) => {
 }
 
 const openTransferDialog = async (row) => {
+  if (!canTransferOp.value) {
+    ElMessage.warning('无库存调拨权限')
+    return
+  }
   await loadData()
   if (row) {
     transferForm.value.productId = row.productId
@@ -1619,6 +1728,10 @@ const openTransferDialog = async (row) => {
 
 // 提交调拨 - 调用后端API
 const submitTransfer = async () => {
+  if (!canTransferOp.value) {
+    ElMessage.warning('无库存调拨权限')
+    return
+  }
   if (!transferFormRef.value) return
   await transferFormRef.value.validate(async (valid) => {
     if (valid) {
@@ -1644,6 +1757,10 @@ const submitTransfer = async () => {
 }
 
 const submitWarehouse = async () => {
+  if (!canInventoryWarehouse.value) {
+    ElMessage.warning('无仓库管理权限')
+    return
+  }
   await warehouseFormRef.value?.validate(async (valid) => {
     if (valid) {
       loading.value = true
@@ -1696,6 +1813,10 @@ const viewStockDetail = (row) => {
 
 // 打开库存入库对话框
 const openStockInbound = async (row) => {
+  if (!canInventoryInbound.value) {
+    ElMessage.warning('无入库操作权限')
+    return
+  }
   await dataStore.loadPurchaseOrders()
   stockInboundType.value = 'purchase'
   stockInboundForm.value = {
@@ -1733,6 +1854,10 @@ const onStockPurchaseOrderChange = (purchaseOrderId) => {
 
 // 打开库存出库对话框
 const openStockOutbound = async (row) => {
+  if (!canInventoryOutbound.value) {
+    ElMessage.warning('无出库操作权限')
+    return
+  }
   const currentStock = row.stock ?? 0
   if (currentStock <= 0) {
     ElMessage.warning('当前库存为0，无法出库')
@@ -1877,6 +2002,10 @@ const submitStockOutbound = async () => {
 
 // 创建采购 - 从库存商品
 const createPurchaseFromStock = async (row) => {
+  if (!canPurchaseAdd.value) {
+    ElMessage.warning('无新建采购单权限')
+    return
+  }
   await dataStore.loadSuppliers()
   currentStock.value = row
   openPurchaseFromStock(row)
@@ -1931,6 +2060,10 @@ const submitPurchase = async () => {
 
 // 确认调拨 - 调用后端API
 const confirmTransfer = async (row) => {
+  if (!canTransferOp.value) {
+    ElMessage.warning('无库存调拨权限')
+    return
+  }
   loading.value = true
   try {
     await inventoryApi.confirmTransfer(row.id)
@@ -2022,6 +2155,10 @@ const viewWarehouseDetail = (w) => {
 
 // 打开添加仓库对话框
 const openWarehouseDialog = () => {
+  if (!canInventoryWarehouse.value) {
+    ElMessage.warning('无仓库管理权限')
+    return
+  }
   warehouseEditMode.value = false
   currentWarehouse.value = null
   warehouseForm.value = { name: '', address: '', capacity: 50, managerName: '', remark: '' }
@@ -2030,6 +2167,10 @@ const openWarehouseDialog = () => {
 
 // 打开编辑仓库对话框
 const editWarehouse = (w) => {
+  if (!canInventoryWarehouse.value) {
+    ElMessage.warning('无仓库管理权限')
+    return
+  }
   warehouseEditMode.value = true
   currentWarehouse.value = w
   warehouseForm.value = { name: w.name, address: w.address, capacity: w.capacityUsed || 50, managerName: w.managerName || '', remark: w.remark || '' }
@@ -2038,6 +2179,10 @@ const editWarehouse = (w) => {
 
 // 删除仓库
 const deleteWarehouse = async (w) => {
+  if (!canInventoryWarehouse.value) {
+    ElMessage.warning('无仓库管理权限')
+    return
+  }
   if (w.totalStock > 0) {
     ElMessage.warning('该仓库存在库存，无法删除')
     return
@@ -2062,6 +2207,10 @@ const deleteWarehouse = async (w) => {
 
 // 打开手动出库对话框
 const openManualOutboundDialog = () => {
+  if (!canInventoryOutbound.value) {
+    ElMessage.warning('无出库操作权限')
+    return
+  }
   manualOutboundType.value = 'sales'
   salesOutboundForm.value = {
     salesOrderId: null,
@@ -2160,6 +2309,10 @@ const submitManualOutbound = async () => {
 
 // 打开手动入库对话框
 const openManualInboundDialog = () => {
+  if (!canInventoryInbound.value) {
+    ElMessage.warning('无入库操作权限')
+    return
+  }
   manualInboundType.value = 'purchase'
   manualInboundForm.value = {
     productId: null,
@@ -2239,6 +2392,10 @@ const submitManualInbound = async () => {
 
 // 更新库存预警值
 const updateSafeStock = async () => {
+  if (!canInventoryAdjust.value) {
+    ElMessage.warning('无库存调整权限')
+    return
+  }
   if (!currentStock.value || !stockSafeStockEdit.value) return
   loading.value = true
   try {
@@ -2256,6 +2413,10 @@ const updateSafeStock = async () => {
 
 // 更新库位
 const updateLocation = async () => {
+  if (!canInventoryAdjust.value) {
+    ElMessage.warning('无库存调整权限')
+    return
+  }
   if (!currentStock.value) return
   loading.value = true
   try {
@@ -2273,6 +2434,10 @@ const updateLocation = async () => {
 
 // 更新呆滞预警天数
 const updateStagnantDays = async () => {
+  if (!canInventoryAdjust.value) {
+    ElMessage.warning('无库存调整权限')
+    return
+  }
   if (!currentStock.value || !stockStagnantDaysEdit.value) return
   loading.value = true
   try {
@@ -2333,6 +2498,7 @@ onMounted(() => {
   if (route.query.subtab) {
     recordsSubTab.value = route.query.subtab
   }
+  syncActiveTabToPermissions()
 })
 
 // 监听路由参数变化
@@ -2343,7 +2509,13 @@ watch(() => route.query, (query) => {
   if (query.subtab) {
     recordsSubTab.value = query.subtab
   }
+  syncActiveTabToPermissions()
 }, { immediate: true })
+
+watch(
+  [canInventoryStockTab, canInventoryRecordsTab, canInventoryTransferTab, canInventoryWarehouseTab],
+  () => syncActiveTabToPermissions()
+)
 </script>
 
 <style lang="scss" scoped>
@@ -2423,6 +2595,10 @@ watch(() => route.query, (query) => {
     .product-icon { width: 40px; height: 40px; border-radius: 8px; background: #F5F7FA; display: flex; align-items: center; justify-content: center; font-size: 20px; }
     .product-info { h4 { font-size: 14px; font-weight: 600; color: #303133; } p { font-size: 12px; color: #909399; } }
   }
+  .grid-empty {
+    padding: 32px 0;
+  }
+
   .warehouse-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; }
   .warehouse-card {
     :deep(.el-card__body) { padding: 24px; }

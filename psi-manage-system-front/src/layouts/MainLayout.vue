@@ -128,7 +128,7 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import { useUserStore } from '@/stores/user'
 import { useNavigationStore } from '@/stores/navigation'
 import { useDataStore } from '@/stores/data'
-import { userApi } from '@/api'
+import { userApi, authApi } from '@/api'
 import NavMenuTree from '@/components/NavMenuTree.vue'
 
 const resolveMediaUrl = (url) => {
@@ -330,22 +330,22 @@ const saveProfile = async () => {
       if (msg) ElMessage.error(msg)
     }
   } else if (profileTab.value === 'password') {
-    await passwordFormRef.value?.validate((valid) => {
-      if (valid) {
-        // 模拟密码修改验证
-        if (passwordForm.value.currentPassword !== 'admin123') {
-          ElMessage.error('当前密码错误')
-          return
-        }
-        ElMessage.success('密码修改成功，请重新登录')
-        profileDialogVisible.value = false
-        // 模拟重新登录
-        setTimeout(() => {
-          userStore.logout()
-          router.push('/login')
-        }, 1500)
-      }
-    })
+    try {
+      await passwordFormRef.value?.validate()
+      await authApi.changePassword({
+        currentPassword: passwordForm.value.currentPassword,
+        newPassword: passwordForm.value.newPassword
+      })
+      ElMessage.success('密码修改成功，请重新登录')
+      profileDialogVisible.value = false
+      setTimeout(() => {
+        userStore.logout()
+        router.push('/login')
+      }, 1500)
+    } catch (e) {
+      const msg = typeof e?.message === 'string' ? e.message : ''
+      if (msg) ElMessage.error(msg)
+    }
   }
 }
 </script>

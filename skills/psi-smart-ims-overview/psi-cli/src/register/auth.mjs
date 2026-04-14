@@ -53,4 +53,11 @@ export function registerAuth (program, { getApi }) {
     .action(() => {
       console.log(TOKEN_PATH)
     })
+
+  auth
+    .command('navigation')
+    .description('GET /auth/navigation（需 Bearer：菜单树、权限码、前端动态路由）')
+    .action(async (_opts, cmd) => {
+      printJson(await getApi(cmd).get('/auth/navigation'))
+    })
 }

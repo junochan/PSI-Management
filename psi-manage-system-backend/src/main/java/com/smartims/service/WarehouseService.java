@@ -50,4 +50,9 @@ public interface WarehouseService {
      */
     List<Warehouse> getAllWarehouses();
 
+    /**
+     * 下拉筛选用：仅 id、编码、名称（无统计字段，供仅有「库存查看」等账号拉取）
+     */
+    List<Warehouse> listOptions();
+
 }

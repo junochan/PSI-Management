@@ -18,7 +18,7 @@ const program = new Command()
 program
   .name('psims')
   .description('智链进销存 smart-ims 后端 HTTP API 命令行（与前端 /api/v1 一致）')
-  .version('1.0.0')
+  .version('1.1.0')
   .option(
     '--base-url <url>',
     'API 根路径（含 /api/v1）',

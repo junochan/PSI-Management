@@ -72,7 +72,7 @@
               <span class="stat-value info">¥{{ purchaseOrderSummary.refundedAmount.toLocaleString() }}</span>
             </div>
           </div>
-          <el-table :data="purchaseOrderTableRows" style="width: 100%" :max-height="500">
+          <el-table :data="purchaseOrderTableRows" empty-text="暂无数据" style="width: 100%" :max-height="500">
             <el-table-column label="单号" min-width="140">
               <template #default="{ row }">
                 <span class="order-no">{{ row.orderNo }}</span>
@@ -186,7 +186,7 @@
               </div>
             </div>
           </template>
-          <el-table :data="inboundTableRows" style="width: 100%" :max-height="500">
+          <el-table :data="inboundTableRows" empty-text="暂无数据" style="width: 100%" :max-height="500">
             <el-table-column label="入库单号" width="140">
               <template #default="{ row }">
                 <span class="order-no success">{{ row.orderNo }}</span>
@@ -237,8 +237,8 @@
         </el-card>
       </el-tab-pane>
 
-      <!-- 供应商管理 -->
-      <el-tab-pane label="供应商管理" name="suppliers">
+      <!-- 供应商管理：仅 purchase:supplier（勿用 purchase:add/edit 或父级菜单码代替） -->
+      <el-tab-pane v-if="canPurchaseSuppliersTab" label="供应商管理" name="suppliers">
         <div class="supplier-search-bar">
           <el-input
             v-model="supplierSearchKeyword"
@@ -247,12 +247,13 @@
             clearable
             style="width: 200px"
           />
-          <el-button v-if="canAddPurchase" type="primary" @click="openSupplierDialog">
+          <el-button v-if="canAddSupplier" type="primary" @click="openSupplierDialog">
             <el-icon><Plus /></el-icon>
             添加供应商
           </el-button>
         </div>
-        <div class="suppliers-grid">
+        <el-empty v-if="!filteredSuppliersListWithStats.length" class="grid-empty" description="暂无数据" :image-size="80" />
+        <div v-else class="suppliers-grid">
           <el-card class="supplier-card" v-for="s in filteredSuppliersListWithStats" :key="s.id">
             <div class="supplier-header">
               <div class="supplier-avatar">🏭</div>
@@ -283,9 +284,9 @@
               </div>
             </div>
             <div class="supplier-actions">
-              <el-button v-if="canViewPurchase" type="primary" @click="viewSupplierDetail(s)">查看详情</el-button>
-              <el-button v-if="canEditPurchase" @click="editSupplier(s)">编辑</el-button>
-              <el-button v-if="canEditPurchase" type="danger" plain @click="deleteSupplier(s)">删除</el-button>
+              <el-button v-if="canPurchaseSuppliersTab" type="primary" @click="viewSupplierDetail(s)">查看详情</el-button>
+              <el-button v-if="canEditSupplierEntity" @click="editSupplier(s)">编辑</el-button>
+              <el-button v-if="canEditSupplierEntity" type="danger" plain @click="deleteSupplier(s)">删除</el-button>
             </div>
           </el-card>
         </div>
@@ -492,18 +493,20 @@ const router = useRouter()
 const dataStore = useDataStore()
 const userStore = useUserStore()
 
-/** 勾选一级「采购管理」菜单时仅有 code purchase，视为模块内全能力（与角色配置习惯兼容） */
-const hasPurchaseModule = computed(() => userStore.hasPermission('purchase'))
+const hasPurchaseMenu = computed(() => userStore.hasPermission('purchase'))
 
+/** 供应商管理 Tab / 增删改供应商：仅 purchase:supplier（与权限表「供应商管理」一致） */
+const canPurchaseSuppliersTab = computed(() => userStore.hasPermission('purchase:supplier'))
+
+/** 查看：菜单或「采购订单查看」 */
 const canViewPurchase = computed(
-  () => userStore.hasPermission('purchase:view') || hasPurchaseModule.value
+  () => userStore.hasPermission('purchase:view') || hasPurchaseMenu.value
 )
-const canAddPurchase = computed(
-  () => userStore.hasPermission('purchase:add') || hasPurchaseModule.value
-)
-const canEditPurchase = computed(
-  () => userStore.hasPermission('purchase:edit') || hasPurchaseModule.value
-)
+/** 写操作仅认 purchase:add / purchase:edit，不再因仅有菜单码 purchase 显示按钮 */
+const canAddPurchase = computed(() => userStore.hasPermission('purchase:add'))
+const canEditPurchase = computed(() => userStore.hasPermission('purchase:edit'))
+const canAddSupplier = computed(() => userStore.hasPermission('purchase:supplier'))
+const canEditSupplierEntity = computed(() => userStore.hasPermission('purchase:supplier'))
 
 /** 与后端 GET /products、GET /warehouses 的 OR 规则一致，避免无意义请求 */
 const canLoadProductList = computed(
@@ -730,16 +733,18 @@ const loadStats = async () => {
   }
 }
 
-// 加载数据：采购相关接口始终拉；商品/仓库列表按权限按需拉取（与后端 OR 规则一致）
+// 加载数据：采购相关接口始终拉；行业字典仅供应商管理需要
 const loadData = async () => {
   loading.value = true
   try {
     const tasks = [
       dataStore.loadSuppliers(),
-      dataStore.loadSupplierIndustries(),
       dataStore.loadPurchaseOrders(),
       dataStore.loadInboundRecords()
     ]
+    if (canPurchaseSuppliersTab.value) {
+      tasks.push(dataStore.loadSupplierIndustries())
+    }
     if (canLoadProductList.value) {
       tasks.push(dataStore.loadProducts())
     }
@@ -931,7 +936,7 @@ const openPurchaseDialog = async () => {
 }
 
 const openSupplierDialog = () => {
-  if (!canAddPurchase.value) {
+  if (!canAddSupplier.value) {
     ElMessage.warning('无添加供应商权限')
     return
   }
@@ -976,11 +981,11 @@ const submitPurchase = async () => {
 
 // 提交供应商 - 调用后端API
 const submitSupplier = async () => {
-  if (supplierForm.value.id && !canEditPurchase.value) {
+  if (supplierForm.value.id && !canEditSupplierEntity.value) {
     ElMessage.warning('无编辑供应商权限')
     return
   }
-  if (!supplierForm.value.id && !canAddPurchase.value) {
+  if (!supplierForm.value.id && !canAddSupplier.value) {
     ElMessage.warning('无添加供应商权限')
     return
   }
@@ -1088,7 +1093,7 @@ const viewSupplierDetail = (s) => {
 }
 
 const editSupplier = (s) => {
-  if (!canEditPurchase.value) {
+  if (!canEditSupplierEntity.value) {
     ElMessage.warning('无编辑供应商权限')
     return
   }
@@ -1106,7 +1111,7 @@ const editSupplier = (s) => {
 }
 
 const deleteSupplier = async (s) => {
-  if (!canEditPurchase.value) {
+  if (!canEditSupplierEntity.value) {
     ElMessage.warning('无删除供应商权限')
     return
   }
@@ -1136,9 +1141,18 @@ const printPurchaseOrder = () => {
   orderDetailVisible.value = false
 }
 
+const syncPurchaseTabToPermissions = () => {
+  if (activeTab.value === 'suppliers' && !canPurchaseSuppliersTab.value) {
+    activeTab.value = 'orders'
+  }
+}
+
+watch([canPurchaseSuppliersTab], () => syncPurchaseTabToPermissions())
+
 // 初始化加载
 onMounted(() => {
   loadData()
+  syncPurchaseTabToPermissions()
 })
 </script>
 
@@ -1259,6 +1273,10 @@ onMounted(() => {
     justify-content: space-between;
     align-items: center;
     margin-bottom: 20px;
+  }
+
+  .grid-empty {
+    padding: 32px 0;
   }
 
   .suppliers-grid {

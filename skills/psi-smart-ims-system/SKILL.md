@@ -1,20 +1,20 @@
 ---
 name: psi-smart-ims-system
 description: >-
-  智链进销存系统管理：通过 psims 管理用户、角色与权限、查看操作日志，以及 util-encode 生成 BCrypt；对应 HTTP /users、/roles、/logs、/util。
-  当用户开户改权、审计操作记录、或初始化测试账号密码哈希时使用。
+  智链进销存系统管理：通过 psims 管理用户、角色与权限、查看操作日志，以及 util-encode 生成 BCrypt；另有 POST /users/avatar 头像上传（multipart file）。
+  当用户开户改权、上传头像、审计操作记录、或初始化测试账号密码哈希时使用。
 ---
 
 # 系统设置（用户 / 角色 / 日志 / 工具）
 
 ## 功能与作用
 
-- **用户**：后台账号的增删改查；`all` 用于下拉选择等不分页场景。
+- **用户**：后台账号的增删改查；`all` 用于下拉选择等不分页场景；**头像** 通过 `POST /users/avatar`（`multipart/form-data`）上传，响应 `data.url` 写入用户资料的 `avatar` 字段（前端 `userApi.uploadAvatar`）。
 - **角色与权限**：维护角色，及 **角色-权限** 绑定（权限 id 数组）。
 - **操作日志**：按条件分页查询审计日志。
 - **util-encode**：后端提供的 **BCrypt 明文转哈希**（仅测试/运维，返回 **纯文本** 非 JSON Result）。
 
-对应前端：`/settings`、角色权限页。
+对应前端：系统设置相关页面（路由由 **`GET /auth/navigation`** 返回的动态路由注册，常见为 `/settings` 及子页、角色权限等）。
 
 ## CLI 调用
 
@@ -27,7 +27,10 @@ psims users get 1
 psims users create -f ./user.json
 psims users update 1 -d "{\"phone\":\"...\"}"
 psims users delete 1
+psims users upload-avatar --file ./avatar.png
 ```
+
+头像上传对应 `POST /users/avatar`，`multipart/form-data` 字段 **`file`**，终端打印解包后的 `data`（含 `url`）。
 
 ### 角色 `psims roles <子命令>`
 
@@ -60,7 +63,7 @@ psims util-encode -p "plain-password"
 
 | 区域 | 路径 |
 |------|------|
-| 用户 | `/users`、`/users/all`、`/users/{id}` |
+| 用户 | `/users`、`/users/all`、`/users/{id}`、`POST /users/avatar`（multipart） |
 | 角色 | `/roles`、`/roles/{id}`、`/roles/{id}/permissions`、`/roles/permissions` |
 | 日志 | `GET /logs` |
 | 工具 | `GET /util/encode?password=`（纯文本响应） |

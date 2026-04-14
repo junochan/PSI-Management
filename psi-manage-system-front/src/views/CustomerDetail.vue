@@ -55,7 +55,7 @@
     <!-- 历史订单 -->
     <el-card style="margin-top: 20px">
       <template #header><h3>历史订单</h3></template>
-      <el-table :data="customerOrders" style="width: 100%">
+      <el-table :data="customerOrders" empty-text="暂无数据" style="width: 100%">
         <el-table-column label="订单编号" width="150">
           <template #default="{ row }"><span class="order-no">{{ row.orderNo }}</span></template>
         </el-table-column>

@@ -1,6 +1,7 @@
 package com.smartims.service.impl;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.smartims.dto.ChangePasswordDTO;
 import com.smartims.dto.LoginDTO;
 import com.smartims.entity.SysRole;
 import com.smartims.entity.SysUser;
@@ -8,6 +9,7 @@ import com.smartims.exception.BusinessException;
 import com.smartims.mapper.SysRoleMapper;
 import com.smartims.mapper.SysUserMapper;
 import com.smartims.security.JwtUtil;
+import com.smartims.security.UserContext;
 import com.smartims.service.AuthService;
 import com.smartims.service.PermissionService;
 import com.smartims.vo.LoginVO;
@@ -15,6 +17,8 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+import org.springframework.util.StringUtils;
 
 import java.time.LocalDateTime;
 import java.util.List;
@@ -92,6 +96,32 @@ public class AuthServiceImpl implements AuthService {
     @Override
     public void logout() {
         log.info("用户登出成功");
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public void changePassword(ChangePasswordDTO dto) {
+        Long userId = UserContext.getCurrentUserId();
+        if (userId == null) {
+            throw new BusinessException("未登录或登录已过期");
+        }
+        SysUser user = sysUserMapper.selectById(userId);
+        if (user == null) {
+            throw new BusinessException("用户不存在");
+        }
+        if (!passwordEncoder.matches(dto.getCurrentPassword(), user.getPassword())) {
+            throw new BusinessException("当前密码错误");
+        }
+        String newPwd = dto.getNewPassword() != null ? dto.getNewPassword().trim() : "";
+        if (!StringUtils.hasText(newPwd) || newPwd.length() < 6) {
+            throw new BusinessException("新密码长度至少6位");
+        }
+        if (passwordEncoder.matches(newPwd, user.getPassword())) {
+            throw new BusinessException("新密码不能与当前密码相同");
+        }
+        user.setPassword(passwordEncoder.encode(newPwd));
+        sysUserMapper.updateById(user);
+        log.info("用户修改密码成功：userId={}", userId);
     }
 
 }

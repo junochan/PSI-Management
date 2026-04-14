@@ -11,10 +11,13 @@ import com.smartims.service.CategoryService;
 import com.smartims.util.CodeGenerator;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.dao.DuplicateKeyException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
+import java.time.LocalDate;
+import java.time.format.DateTimeFormatter;
 import java.util.List;
 
 /**
@@ -27,6 +30,9 @@ import java.util.List;
 @Service
 @RequiredArgsConstructor
 public class CategoryServiceImpl implements CategoryService {
+
+    private static final DateTimeFormatter CATEGORY_CODE_DATE = DateTimeFormatter.ofPattern("yyMMdd");
+    private static final int MAX_CATEGORY_CODE_ATTEMPTS = 5;
 
     private final SysCategoryMapper sysCategoryMapper;
     private final ProductMapper productMapper;
@@ -52,25 +58,57 @@ public class CategoryServiceImpl implements CategoryService {
     @Override
     @Transactional(rollbackFor = Exception.class)
     public void createCategory(CategoryDTO dto) {
-        String code;
-        if (!StringUtils.hasText(dto.getCode())) {
-            code = CodeGenerator.generateCategoryCode();
-        } else {
-            code = dto.getCode().trim();
-            if (categoryCodeExists(code, null)) {
-                throw new BusinessException("分类编码已存在");
-            }
-        }
-
         SysCategory category = new SysCategory();
         category.setName(dto.getName());
-        category.setCode(code);
         category.setParentId(dto.getParentId() != null ? dto.getParentId() : 0L);
         category.setSort(dto.getSort() != null ? dto.getSort() : 0);
         category.setStatus(dto.getStatus() != null ? dto.getStatus() : 1);
 
-        sysCategoryMapper.insert(category);
-        log.info("创建分类成功：id={}, name={}, code={}", category.getId(), category.getName(), category.getCode());
+        if (!StringUtils.hasText(dto.getCode())) {
+            for (int attempt = 0; attempt < MAX_CATEGORY_CODE_ATTEMPTS; attempt++) {
+                category.setCode(allocateCategoryCode());
+                try {
+                    sysCategoryMapper.insert(category);
+                    log.info("创建分类成功：id={}, name={}, code={}", category.getId(), category.getName(), category.getCode());
+                    return;
+                } catch (DuplicateKeyException e) {
+                    log.warn("分类编码冲突，重新分配 attempt={} code={}", attempt + 1, category.getCode());
+                    if (attempt == MAX_CATEGORY_CODE_ATTEMPTS - 1) {
+                        throw new BusinessException("分类编码生成失败，请稍后重试");
+                    }
+                }
+            }
+        } else {
+            String code = dto.getCode().trim();
+            if (categoryCodeExists(code, null)) {
+                throw new BusinessException("分类编码已存在");
+            }
+            category.setCode(code);
+            sysCategoryMapper.insert(category);
+            log.info("创建分类成功：id={}, name={}, code={}", category.getId(), category.getName(), category.getCode());
+        }
+    }
+
+    /**
+     * 生成当日唯一分类编码，与 {@link CodeGenerator#generateCategoryCode()} 格式一致。
+     */
+    private String allocateCategoryCode() {
+        String dateStr = LocalDate.now().format(CATEGORY_CODE_DATE);
+        String prefix = CodeGenerator.CATEGORY_PREFIX + dateStr;
+        String maxCode = sysCategoryMapper.selectMaxCodeByDatePrefix(prefix);
+        int nextSeq = 1;
+        if (maxCode != null && maxCode.length() >= prefix.length() + 4) {
+            try {
+                String tail = maxCode.substring(maxCode.length() - 4);
+                nextSeq = Integer.parseInt(tail) + 1;
+            } catch (NumberFormatException ignored) {
+                nextSeq = 1;
+            }
+        }
+        if (nextSeq < 1 || nextSeq > 9999) {
+            throw new BusinessException("当日分类编码序号已用尽，请联系管理员");
+        }
+        return prefix + String.format("%04d", nextSeq);
     }
 
     private boolean categoryCodeExists(String code, Long excludeId) {

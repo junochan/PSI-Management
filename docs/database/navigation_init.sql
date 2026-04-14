@@ -13,13 +13,21 @@
 --    在前端 view-loaders.js 注册 viewKey。
 -- 6) 报表菜单 code=reports 暂无对应页面时，NavigationServiceImpl 会过滤该菜单；
 --    上线报表页后从 MENU_CODES_WITHOUT_PAGE 移除并补充 UiRouteDefinition。
--- 7) 采购岗与跨模块只读接口（ApplicationPermissionRegistry 内「多码满足其一」）：
---    - GET /v1/products/**：具备 products、product:view、purchase、purchase:view 之一即可；
---    - POST/PUT/DELETE /v1/products/**：仍须商品模块或对应 product:add / product:edit / product:delete；
---    - GET /v1/categories/**：与 GET 商品列表相同的 OR 规则；写操作与商品类似；
---    - GET /v1/warehouses/**：具备 inventory、inventory:view、purchase、purchase:view 之一即可；
---    - POST/PUT/DELETE /v1/warehouses/**：须 inventory。
---    建议采购专员角色至少勾选：一级菜单 purchase（code=purchase）、purchase:view、purchase:add、
---    purchase:edit、purchase:inbound；若需在采购页使用「按商品筛选」与商品缩略图，可再勾选 product:view；
---    若需仓库下拉完整可用，可再勾选 inventory:view（仅只读仓库列表，不含库存流水）。
+-- 7) 跨模块只读 GET（ApplicationPermissionRegistry 内「多码满足其一」），写操作仍归各业务模块：
+--    - GET /v1/products/**、GET /v1/categories/**：商品/采购/销售/库存相关码（含 inventory、inventory:view、
+--      inventory:transfer）之一即可；库存页需拉商品与分类做筛选与名称补全；
+--    - POST/PUT/DELETE 商品与分类：仍须 products 或对应 product:*；
+--    - GET /v1/warehouses/**：inventory / purchase / sales 等见代码中 OR 列表；POST/PUT/DELETE 仓库须 inventory；
+--    - GET /v1/inventory/**：inventory、inventory:view、sales、sales:view 等；POST/PUT/DELETE 须 inventory；
+--    - GET /v1/purchase/**：purchase、purchase:view 或 inventory、inventory:view、inventory:transfer（库存页联动
+--      采购单/入库）；提交采购单、入库等写操作仍须 purchase；
+--    - GET /v1/suppliers/**、GET /v1/supplier-industries/**：purchase 或 inventory 相关只读码（库存页「从库存
+--      发起补货」拉供应商）；增删改供应商仍须 purchase；
+--    - GET /v1/sales/**：sales、sales:view 或 inventory、inventory:view、inventory:transfer（库存页看出库/订单）；
+--      写销售单、发货等仍须 sales；
+--    - GET /v1/customers/**、GET /v1/aftersales/**：仍仅 sales（库存页首屏不依赖）。
+--    建议采购专员：一级 purchase、purchase:view、purchase:add、purchase:edit、purchase:inbound；可选 product:view；
+--    销售专员：销售模块即可使用销售页商品/仓/库存只读接口；
+--    仓管（仅库存菜单 + inventory:*）：可正常使用库存页拉商品、采购只读、销售只读、供应商只读；创建采购单、
+--      入库确认等写接口仍要求 purchase / sales 等对应权限（与业务一致）。
 -- =============================================================================

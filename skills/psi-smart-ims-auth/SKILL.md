@@ -1,8 +1,8 @@
 ---
 name: psi-smart-ims-auth
 description: >-
-  智链进销存认证：通过 psims CLI 登录获取 JWT、登出、查看 token 文件路径；对应 HTTP POST /auth/login 与 /auth/logout。
-  当用户首次在终端访问系统、脚本需持久化 token、或 OpenClaw 需代登录再调其它接口时使用。
+  智链进销存认证：通过 psims CLI 登录获取 JWT、登出、查看 token 文件路径、auth navigation（GET /auth/navigation：菜单、权限码、动态路由）。
+  当用户首次在终端访问系统、脚本需持久化 token、排查动态菜单/权限、或 OpenClaw 需代登录再调其它接口时使用。
 ---
 
 # 认证（登录 / 登出）
@@ -12,8 +12,9 @@ description: >-
 - **登录**：向后端验证用户名密码，取得 **JWT**。前端存 `localStorage`；CLI 默认写入用户目录下的 **`~/.psi-smart-ims/token`**，供后续 `psims` 子命令自动带 `Authorization`。
 - **登出**：通知后端结束会话（若后端实现），并 **删除本地 token 文件**，避免脚本误用过期凭证。
 - **token-path**：运维或排错时确认 CLI 实际读取的 token 文件位置。
+- **navigation（登录后）**：返回当前用户的 **菜单树、权限码列表、前端动态路由表**（`viewKey` 与 `router/view-loaders.js` 对应），用于侧边栏与按权限注册路由。需 **Bearer**，白名单中仅匿名接口可免登录；本接口 **必须已登录**。
 
-对应前端路由：`/login`（`Login.vue`）。
+对应前端：`/login`（`Login.vue`）；登录成功后由 `navigationStore.fetchNavigation()` 调用 `GET /auth/navigation`。
 
 ## CLI 调用（推荐）
 
@@ -30,6 +31,7 @@ description: >-
 | `psims auth login <username>` | 调用登录接口；成功后可保存 token |
 | `psims auth logout` | 登出并清除本地 token 文件 |
 | `psims auth token-path` | 打印 token 文件绝对路径 |
+| `psims auth navigation` | `GET /auth/navigation`（需已登录） |
 
 ### 示例
 
@@ -53,11 +55,18 @@ psims --base-url https://example.com/api/v1 auth login admin
 psims auth logout
 ```
 
+登录后拉取菜单与动态路由：
+
+```bash
+psims auth navigation
+```
+
 ## HTTP 对照（直连 curl 时）
 
 | 方法 | 路径 | 说明 |
 |------|------|------|
 | POST | `/auth/login` | Body：`{ "username", "password", "remember" }` |
 | POST | `/auth/logout` | 需 Bearer |
+| GET | `/auth/navigation` | 需 Bearer；`data` 为 `NavigationVO`（菜单、权限、`routes`） |
 
-成功响应体仍为统一 `Result`，`data` 中含 `token` 等字段。
+成功响应体仍为统一 `Result`，登录接口 `data` 中含 `token`、用户信息等字段。

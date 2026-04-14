@@ -20,6 +20,34 @@ public class ApplicationPermissionRegistry {
 
     private final AntPathMatcher pathMatcher = new AntPathMatcher();
 
+    /** 商品/分类 GET：与库存、采购、销售只读联查共用 */
+    private static final List<String> READ_PRODUCT_OR_CATEGORY = List.of(
+            "products", "product:view", "purchase", "purchase:view", "sales", "sales:view",
+            "inventory", "inventory:view", "inventory:transfer", "inventory:warehouse",
+            "inventory:inbound", "inventory:outbound", "inventory:adjust", "inventory:records");
+
+    /** 采购 GET：库存页联动采购单、入库流水 */
+    private static final List<String> READ_PURCHASE = List.of(
+            "purchase", "purchase:view", "inventory", "inventory:view", "inventory:transfer",
+            "inventory:warehouse", "inventory:inbound", "inventory:outbound", "inventory:adjust",
+            "inventory:records");
+
+    /**
+     * 采购入库流水 GET：不包含仅 inventory:view（与「出入库记录」inventory:records、入出库操作码对齐）
+     */
+    private static final List<String> READ_PURCHASE_INBOUNDS = List.of(
+            "purchase", "purchase:view", "inventory", "inventory:transfer",
+            "inventory:warehouse", "inventory:inbound", "inventory:outbound", "inventory:adjust",
+            "inventory:records");
+
+    /** 销售 GET：库存页联动销售出库等（不含仅 inventory:view，避免无授权即可拉订单拼出库记录） */
+    private static final List<String> READ_SALES = List.of(
+            "sales", "sales:view", "inventory", "inventory:transfer",
+            "inventory:warehouse", "inventory:inbound", "inventory:outbound", "inventory:adjust",
+            "inventory:records");
+
+    private static final Set<String> HTTP_WRITE = Set.of("POST", "PUT", "PATCH", "DELETE");
+
     /**
      * 顺序：先匹配更具体的「方法 + 路径」规则，再匹配通配方法。
      */
@@ -42,35 +70,98 @@ public class ApplicationPermissionRegistry {
         addRule("/v1/logs/**", null, List.of("settings:user"));
         addRule("/v1/dashboard/**", null, List.of("dashboard"));
 
-        // 商品：读接口允许采购岗只读（purchase / purchase:view）；写仍须商品模块或对应操作码
-        addRule("/v1/products/**", Set.of("GET", "HEAD"),
-                List.of("products", "product:view", "purchase", "purchase:view"));
-        addRule("/v1/products/**", Set.of("POST"), List.of("products", "product:add"));
-        addRule("/v1/products/**", Set.of("PUT", "PATCH"), List.of("products", "product:edit"));
-        addRule("/v1/products/**", Set.of("DELETE"), List.of("products", "product:delete"));
-        addRule("/v1/products/**", null, List.of("products"));
+        // 商品/分类：无子路径的 GET（/v1/products、/v1/categories）单独注册，避免 /** 未匹配时落入仅菜单码 products 的兜底规则
+        addRule("/v1/products", Set.of("GET", "HEAD"), READ_PRODUCT_OR_CATEGORY);
+        addRule("/v1/categories", Set.of("GET", "HEAD"), READ_PRODUCT_OR_CATEGORY);
 
-        addRule("/v1/categories/**", Set.of("GET", "HEAD"),
-                List.of("products", "product:view", "purchase", "purchase:view"));
-        addRule("/v1/categories/**", Set.of("POST"), List.of("products", "product:add"));
-        addRule("/v1/categories/**", Set.of("PUT", "PATCH"), List.of("products", "product:edit"));
-        addRule("/v1/categories/**", Set.of("DELETE"), List.of("products", "product:delete"));
-        addRule("/v1/categories/**", null, List.of("products"));
+        // 商品：读接口允许采购/销售/库存岗只读；写接口仅认操作码 product:*（不再用菜单码 products 放行写操作）
+        addRule("/v1/products/**", Set.of("GET", "HEAD"), READ_PRODUCT_OR_CATEGORY);
+        // 以图搜图：POST 但属查询，与读权限一致（须在泛化 POST 之前匹配）
+        addRule("/v1/products/search-by-image", Set.of("POST"),
+                List.of("products", "product:view", "purchase", "purchase:view", "sales", "sales:view",
+                        "inventory", "inventory:view", "inventory:transfer", "inventory:warehouse",
+                        "inventory:inbound", "inventory:outbound", "inventory:adjust", "inventory:records"));
+        // 商品主图上传：新建或编辑表单均需
+        addRule("/v1/products/image", Set.of("POST"), List.of("product:add", "product:edit"));
+        addRule("/v1/products/batch", Set.of("DELETE"), List.of("product:delete"));
+        addRule("/v1/products/**", Set.of("POST"), List.of("product:add"));
+        addRule("/v1/products/**", Set.of("PUT", "PATCH"), List.of("product:edit"));
+        addRule("/v1/products/**", Set.of("DELETE"), List.of("product:delete"));
 
-        addRule("/v1/purchase/**", null, List.of("purchase"));
-        addRule("/v1/suppliers/**", null, List.of("purchase"));
-        addRule("/v1/supplier-industries/**", null, List.of("purchase"));
+        addRule("/v1/categories/**", Set.of("GET", "HEAD"), READ_PRODUCT_OR_CATEGORY);
+        addRule("/v1/categories/**", Set.of("POST"), List.of("product:add"));
+        addRule("/v1/categories/**", Set.of("PUT", "PATCH"), List.of("product:edit"));
+        addRule("/v1/categories/**", Set.of("DELETE"), List.of("product:delete"));
 
-        addRule("/v1/sales/**", null, List.of("sales"));
-        addRule("/v1/customers/**", null, List.of("sales"));
-        addRule("/v1/aftersales/**", null, List.of("sales"));
+        // 采购：读接口允许库存岗查看采购单/入库流水（与库存页联动）；写仍须 purchase
+        addRule("/v1/purchase/orders", Set.of("GET", "HEAD"), READ_PURCHASE);
+        addRule("/v1/purchase/inbounds", Set.of("GET", "HEAD"), READ_PURCHASE_INBOUNDS);
+        addRule("/v1/purchase/inbounds/**", Set.of("GET", "HEAD"), READ_PURCHASE_INBOUNDS);
+        addRule("/v1/purchase/stats", Set.of("GET", "HEAD"), READ_PURCHASE);
+        addRule("/v1/purchase/**", Set.of("GET", "HEAD"),
+                List.of("purchase", "purchase:view", "inventory", "inventory:view", "inventory:transfer",
+                        "inventory:warehouse", "inventory:inbound", "inventory:outbound", "inventory:adjust",
+                        "inventory:records"));
+        addRule("/v1/purchase/**", HTTP_WRITE, List.of("purchase"));
+        // 供应商：读放宽；写须 purchase:supplier / purchase:add|edit 或菜单 purchase
+        addRule("/v1/suppliers/**", Set.of("GET", "HEAD"),
+                List.of("purchase", "purchase:supplier", "inventory", "inventory:view", "inventory:transfer",
+                        "inventory:warehouse", "inventory:inbound", "inventory:outbound", "inventory:adjust",
+                        "inventory:records"));
+        addRule("/v1/suppliers/**", Set.of("POST"), List.of("purchase:supplier", "purchase:add", "purchase"));
+        addRule("/v1/suppliers/**", Set.of("PUT", "PATCH"), List.of("purchase:supplier", "purchase:edit", "purchase"));
+        addRule("/v1/suppliers/**", Set.of("DELETE"), List.of("purchase:supplier", "purchase:edit", "purchase"));
+        addRule("/v1/supplier-industries/**", Set.of("GET", "HEAD"),
+                List.of("purchase", "inventory", "inventory:view", "inventory:transfer",
+                        "inventory:warehouse", "inventory:inbound", "inventory:outbound", "inventory:adjust",
+                        "inventory:records"));
 
-        // 仓库：读接口允许采购选仓；写仍须库存模块
+        // 销售：订单付款/发货/收货单独拆权限；其余写仍须 sales
+        addRule("/v1/sales/orders", Set.of("GET", "HEAD"), READ_SALES);
+        addRule("/v1/sales/stats", Set.of("GET", "HEAD"), READ_SALES);
+        addRule("/v1/sales/**", Set.of("GET", "HEAD"),
+                List.of("sales", "sales:view", "inventory", "inventory:transfer",
+                        "inventory:warehouse", "inventory:inbound", "inventory:outbound", "inventory:adjust",
+                        "inventory:records"));
+        addRule("/v1/sales/orders/*/payment", Set.of("PUT"), List.of("sales:payment", "sales:add", "sales"));
+        addRule("/v1/sales/orders/*/shipping", Set.of("POST"), List.of("sales:ship", "sales"));
+        addRule("/v1/sales/orders/*/received", Set.of("PUT"), List.of("sales:receive", "sales:ship", "sales"));
+        addRule("/v1/sales/**", HTTP_WRITE, List.of("sales"));
+        addRule("/v1/customers/**", Set.of("GET", "HEAD"), List.of("sales", "sales:view"));
+        addRule("/v1/customers/**", HTTP_WRITE, List.of("sales"));
+        addRule("/v1/aftersales/**", Set.of("GET", "HEAD"), List.of("sales", "sales:view"));
+        addRule("/v1/aftersales/**", HTTP_WRITE, List.of("sales"));
+
+        // 仓库：下拉 options 含 inventory:view；完整列表/详情不含仅 view（须菜单或子权限）
+        addRule("/v1/warehouses/options", Set.of("GET", "HEAD"),
+                List.of("inventory", "inventory:view", "inventory:transfer", "inventory:warehouse",
+                        "inventory:inbound", "inventory:outbound", "inventory:adjust", "inventory:records",
+                        "purchase", "purchase:view", "sales", "sales:view"));
         addRule("/v1/warehouses/**", Set.of("GET", "HEAD"),
-                List.of("inventory", "inventory:view", "purchase", "purchase:view"));
-        addRule("/v1/warehouses/**", null, List.of("inventory"));
+                List.of("inventory", "inventory:transfer", "inventory:warehouse", "inventory:inbound", "inventory:outbound",
+                        "inventory:records", "inventory:adjust", "purchase", "purchase:view", "sales", "sales:view"));
+        addRule("/v1/warehouses/**", HTTP_WRITE, List.of("inventory:warehouse", "inventory"));
 
-        addRule("/v1/inventory/**", null, List.of("inventory"));
+        // 库存：先匹配具体写接口，再读，最后兜底菜单码 inventory
+        addRule("/v1/inventory", Set.of("GET", "HEAD"),
+                List.of("inventory", "inventory:view", "inventory:transfer", "inventory:warehouse",
+                        "inventory:inbound", "inventory:outbound", "inventory:adjust", "inventory:records", "sales", "sales:view"));
+        addRule("/v1/inventory/search-by-image", Set.of("POST"),
+                List.of("inventory", "inventory:view", "inventory:transfer", "inventory:warehouse",
+                        "inventory:inbound", "inventory:outbound", "inventory:adjust", "inventory:records", "sales", "sales:view"));
+        addRule("/v1/inventory/transfers", Set.of("POST"), List.of("inventory:transfer", "inventory"));
+        addRule("/v1/inventory/transfers/*/confirm", Set.of("PUT"), List.of("inventory:transfer", "inventory"));
+        addRule("/v1/inventory/inbound/new", Set.of("POST"), List.of("inventory:inbound", "inventory"));
+        addRule("/v1/inventory/inbound", Set.of("POST"), List.of("inventory:inbound", "inventory"));
+        addRule("/v1/inventory/outbound", Set.of("POST"), List.of("inventory:outbound", "inventory"));
+        addRule("/v1/inventory/warnings/*/handle", Set.of("PUT"), List.of("inventory:adjust", "inventory"));
+        addRule("/v1/inventory/*/safe-stock", Set.of("PUT"), List.of("inventory:adjust", "inventory"));
+        addRule("/v1/inventory/*/location", Set.of("PUT"), List.of("inventory:adjust", "inventory"));
+        addRule("/v1/inventory/*/stagnant-days", Set.of("PUT"), List.of("inventory:adjust", "inventory"));
+        addRule("/v1/inventory/**", Set.of("GET", "HEAD"),
+                List.of("inventory", "inventory:view", "inventory:transfer", "inventory:warehouse",
+                        "inventory:inbound", "inventory:outbound", "inventory:adjust", "inventory:records", "sales", "sales:view"));
+        addRule("/v1/inventory/**", HTTP_WRITE, List.of("inventory"));
     }
 
     private void addRule(String pattern, Set<String> methods, List<String> anyPermissions) {
@@ -120,8 +211,8 @@ public class ApplicationPermissionRegistry {
         addUi("purchase", "Purchase", "采购管理", "Purchase", "purchase", false, "NORMAL");
         addUi("purchase/order/:id", "PurchaseOrderDetail", "采购单详情", "PurchaseOrderDetail", "purchase", true, "NORMAL");
         addUi("purchase/edit/:id", "PurchaseOrderEdit", "编辑采购单", "PurchaseOrderEdit", "purchase", true, "NORMAL");
-        addUi("purchase/supplier/:id", "SupplierDetail", "供应商详情", "SupplierDetail", "purchase", true, "NORMAL");
-        addUi("purchase/supplier/edit/:id", "SupplierEdit", "编辑供应商", "SupplierEdit", "purchase", true, "NORMAL");
+        addUi("purchase/supplier/:id", "SupplierDetail", "供应商详情", "SupplierDetail", "purchase:supplier", true, "NORMAL");
+        addUi("purchase/supplier/edit/:id", "SupplierEdit", "编辑供应商", "SupplierEdit", "purchase:supplier", true, "NORMAL");
         addUi("purchase/inbound/:id", "InboundDetail", "入库详情", "InboundDetail", "purchase", true, "NORMAL");
         addUi("sales", "Sales", "销售管理", "Sales", "sales", false, "NORMAL");
         addUi("sales/order/:id", "SalesOrderDetail", "销售单详情", "SalesOrderDetail", "sales", true, "NORMAL");

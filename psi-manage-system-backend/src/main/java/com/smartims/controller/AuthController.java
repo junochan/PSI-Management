@@ -1,6 +1,7 @@
 package com.smartims.controller;
 
 import com.smartims.common.Result;
+import com.smartims.dto.ChangePasswordDTO;
 import com.smartims.dto.LoginDTO;
 import com.smartims.security.UserContext;
 import com.smartims.service.AuthService;
@@ -50,6 +51,13 @@ public class AuthController {
             return Result.fail(com.smartims.common.ResultCode.UNAUTHORIZED.getCode(), "未登录或登录已过期");
         }
         return Result.success(navigationService.buildNavigation(userId));
+    }
+
+    @Operation(summary = "当前用户修改密码")
+    @PostMapping("/change-password")
+    public Result<Void> changePassword(@Valid @RequestBody ChangePasswordDTO dto) {
+        authService.changePassword(dto);
+        return Result.success("密码已更新");
     }
 
 }

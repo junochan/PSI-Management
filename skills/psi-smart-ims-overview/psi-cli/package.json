@@ -1,6 +1,6 @@
 {
   "name": "psi-smart-ims-cli",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "智链进销存 smart-ims 后端 HTTP API 命令行客户端",
   "type": "module",
   "bin": {

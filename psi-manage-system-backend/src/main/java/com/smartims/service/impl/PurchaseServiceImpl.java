@@ -44,6 +44,7 @@ public class PurchaseServiceImpl implements PurchaseService {
 
     private static final DateTimeFormatter PURCHASE_ORDER_DATE = DateTimeFormatter.ofPattern("yyMMdd");
     private static final int MAX_PURCHASE_ORDER_NO_ATTEMPTS = 5;
+    private static final int MAX_INBOUND_RECORD_ORDER_NO_ATTEMPTS = 5;
 
     private final PurchaseOrderMapper purchaseOrderMapper;
     private final SupplierMapper supplierMapper;
@@ -231,6 +232,43 @@ public class PurchaseServiceImpl implements PurchaseService {
         return prefix + String.format("%04d", nextSeq);
     }
 
+    /**
+     * 生成当日唯一入库单号，与 {@link CodeGenerator#generateInboundOrderNo()} 格式一致。
+     */
+    private String allocateInboundRecordOrderNo() {
+        String dateStr = LocalDate.now().format(PURCHASE_ORDER_DATE);
+        String prefix = CodeGenerator.INBOUND_PREFIX + dateStr;
+        String maxNo = inboundRecordMapper.selectMaxOrderNoByDatePrefix(prefix);
+        int nextSeq = 1;
+        if (maxNo != null && maxNo.length() >= prefix.length() + 4) {
+            try {
+                String tail = maxNo.substring(maxNo.length() - 4);
+                nextSeq = Integer.parseInt(tail) + 1;
+            } catch (NumberFormatException ignored) {
+                nextSeq = 1;
+            }
+        }
+        if (nextSeq < 1 || nextSeq > 9999) {
+            throw new BusinessException("当日入库单序号已用尽，请联系管理员");
+        }
+        return prefix + String.format("%04d", nextSeq);
+    }
+
+    private void insertInboundRecordWithAllocatedOrderNo(InboundRecord record) {
+        for (int attempt = 0; attempt < MAX_INBOUND_RECORD_ORDER_NO_ATTEMPTS; attempt++) {
+            record.setOrderNo(allocateInboundRecordOrderNo());
+            try {
+                inboundRecordMapper.insert(record);
+                return;
+            } catch (DuplicateKeyException e) {
+                log.warn("入库单号冲突，重新分配 attempt={} orderNo={}", attempt + 1, record.getOrderNo());
+                if (attempt == MAX_INBOUND_RECORD_ORDER_NO_ATTEMPTS - 1) {
+                    throw new BusinessException("入库单号生成失败，请稍后重试");
+                }
+            }
+        }
+    }
+
     @Override
     @Transactional(rollbackFor = Exception.class)
     public void updatePurchaseOrder(Long id, PurchaseOrderDTO dto) {
@@ -297,7 +335,6 @@ public class PurchaseServiceImpl implements PurchaseService {
 
         // 创建入库记录
         InboundRecord record = new InboundRecord();
-        record.setOrderNo(CodeGenerator.generateInboundOrderNo());
         record.setPurchaseOrderId(orderId);
         record.setPurchaseOrderNo(order.getOrderNo());
         record.setSupplierId(order.getSupplierId());
@@ -323,7 +360,7 @@ public class PurchaseServiceImpl implements PurchaseService {
             }
         }
 
-        inboundRecordMapper.insert(record);
+        insertInboundRecordWithAllocatedOrderNo(record);
 
         // 更新库存
         LambdaQueryWrapper<Inventory> queryWrapper = new LambdaQueryWrapper<>();

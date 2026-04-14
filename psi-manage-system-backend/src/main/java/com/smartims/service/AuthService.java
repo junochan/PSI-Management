@@ -1,5 +1,6 @@
 package com.smartims.service;
 
+import com.smartims.dto.ChangePasswordDTO;
 import com.smartims.dto.LoginDTO;
 import com.smartims.vo.LoginVO;
 
@@ -20,5 +21,10 @@ public interface AuthService {
      * 用户登出
      */
     void logout();
+
+    /**
+     * 当前登录用户修改密码（需校验原密码）
+     */
+    void changePassword(ChangePasswordDTO dto);
 
 }

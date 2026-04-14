@@ -59,11 +59,13 @@ import { ref, computed, onMounted } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { useDataStore } from '@/stores/data'
+import { useUserStore } from '@/stores/user'
 import { supplierApi } from '@/api'
 
 const router = useRouter()
 const route = useRoute()
 const dataStore = useDataStore()
+const userStore = useUserStore()
 
 const supplierId = computed(() => route.params.id)
 const supplierFormRef = ref()
@@ -86,6 +88,11 @@ const supplierRules = {
 }
 
 onMounted(async () => {
+  if (!userStore.hasPermission('purchase:supplier')) {
+    ElMessage.warning('无供应商管理权限')
+    router.replace('/purchase')
+    return
+  }
   await Promise.all([dataStore.loadSuppliers(), dataStore.loadSupplierIndustries()])
   const supplier = dataStore.suppliers.find(s => s.id === Number(supplierId.value))
   if (supplier) {

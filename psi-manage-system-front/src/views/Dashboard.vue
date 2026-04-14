@@ -35,7 +35,7 @@
             <h3>商品分类销售Top5</h3>
           </div>
         </template>
-        <div class="category-list">
+        <div v-if="categoryData.length" class="category-list">
           <div class="category-item" v-for="cat in categoryData" :key="cat.name">
             <div class="category-icon" :style="{ background: cat.bgColor }">{{ cat.emoji }}</div>
             <div class="category-info">
@@ -50,6 +50,7 @@
             </div>
           </div>
         </div>
+        <el-empty v-else class="category-chart-empty" description="暂无数据" :image-size="72" />
       </el-card>
     </div>
 
@@ -62,16 +63,17 @@
             <h3>商品销售Top5</h3>
           </div>
         </template>
-        <div class="top-list">
+        <div v-if="productSalesTop5.length" class="top-list">
           <div class="top-item" v-for="(item, index) in productSalesTop5" :key="item.productId ?? 'p-' + index">
             <div class="top-rank" :class="{ 'top-1': index === 0, 'top-2': index === 1, 'top-3': index === 2 }">{{ index + 1 }}</div>
             <div class="top-info">
               <h4>{{ item.productName }}</h4>
               <p>{{ item.orderCount }}笔订单</p>
             </div>
-            <div class="top-value">¥{{ (item.totalAmount || 0).toLocaleString() }}</div>
+            <div class="top-value">{{ formatCurrency(item.totalAmount) }}</div>
           </div>
         </div>
+        <el-empty v-else class="top-list-empty" description="暂无数据" :image-size="72" />
       </el-card>
 
       <!-- 客户销售Top5 -->
@@ -81,16 +83,17 @@
             <h3>客户销售Top5</h3>
           </div>
         </template>
-        <div class="top-list">
+        <div v-if="customerSalesTop5.length" class="top-list">
           <div class="top-item" v-for="(item, index) in customerSalesTop5" :key="item.customerId ?? 'c-' + index">
             <div class="top-rank" :class="{ 'top-1': index === 0, 'top-2': index === 1, 'top-3': index === 2 }">{{ index + 1 }}</div>
             <div class="top-info">
               <h4>{{ item.customerName }}</h4>
               <p>{{ item.orderCount }}笔订单</p>
             </div>
-            <div class="top-value">¥{{ (item.totalAmount || 0).toLocaleString() }}</div>
+            <div class="top-value">{{ formatCurrency(item.totalAmount) }}</div>
           </div>
         </div>
+        <el-empty v-else class="top-list-empty" description="暂无数据" :image-size="72" />
       </el-card>
 
       <!-- 库存预警Top10 -->
@@ -101,7 +104,7 @@
             <el-tag type="warning" effect="light" size="small">{{ inventoryWarningTop10.length }}项</el-tag>
           </div>
         </template>
-        <div class="top-list compact">
+        <div v-if="inventoryWarningTop10.length" class="top-list compact">
           <div class="top-item warning" v-for="item in inventoryWarningTop10" :key="item.id">
             <div class="top-info">
               <h4>{{ item.productName }}</h4>
@@ -116,6 +119,7 @@
             </div>
           </div>
         </div>
+        <el-empty v-else class="top-list-empty" description="暂无数据" :image-size="72" />
       </el-card>
 
       <!-- 库存呆滞Top10 -->
@@ -126,7 +130,7 @@
             <el-tag type="danger" effect="light" size="small">{{ inventoryStagnantTop10.length }}项</el-tag>
           </div>
         </template>
-        <div class="top-list compact">
+        <div v-if="inventoryStagnantTop10.length" class="top-list compact">
           <div class="top-item stagnant" v-for="item in inventoryStagnantTop10" :key="item.id">
             <div class="top-info">
               <h4>{{ item.productName }}</h4>
@@ -137,6 +141,7 @@
             </div>
           </div>
         </div>
+        <el-empty v-else class="top-list-empty" description="暂无数据" :image-size="72" />
       </el-card>
     </div>
 
@@ -148,37 +153,44 @@
           <el-button type="primary" link @click="router.push('/sales')">查看全部</el-button>
         </div>
       </template>
-      <el-table :data="recentOrders" style="width: 100%">
-        <el-table-column label="订单编号" prop="orderNo" width="180">
+      <el-table :data="recentOrders" empty-text="暂无数据" class="recent-orders-table" style="width: 100%">
+        <el-table-column label="订单编号" prop="orderNo" width="165">
           <template #default="{ row }">
             <span class="order-no">{{ row.orderNo }}</span>
           </template>
         </el-table-column>
-        <el-table-column label="商品信息" min-width="200">
+        <!-- 不设 width，仅 min-width，剩余宽度由「商品信息」列吸收 -->
+        <el-table-column label="商品信息" min-width="160" show-overflow-tooltip>
           <template #default="{ row }">
             <div class="product-cell">
               <img v-if="getProductImage(row.productId)" :src="getProductImage(row.productId)" class="product-thumb" />
               <div v-else class="product-icon">{{ row.productIcon }}</div>
               <div class="product-info">
-                <h4>{{ row.product }}</h4>
-                <p>{{ row.spec }}</p>
+                <h4 class="product-info-title">{{ row.product }}</h4>
+                <p class="product-info-spec">{{ row.spec }}</p>
               </div>
             </div>
           </template>
         </el-table-column>
-        <el-table-column label="客户" prop="customer" width="150" />
-        <el-table-column label="金额" width="100">
+        <el-table-column label="客户" prop="customer" width="184" show-overflow-tooltip />
+        <el-table-column label="金额" width="120" align="right">
           <template #default="{ row }">
             <span class="amount">¥{{ formatOrderAmount(row.amount) }}</span>
           </template>
         </el-table-column>
-        <el-table-column label="状态" width="100">
+        <el-table-column label="状态" width="102" align="center">
           <template #default="{ row }">
             <el-tag :type="getStatusType(row.status)" effect="light">{{ row.status }}</el-tag>
           </template>
         </el-table-column>
-        <el-table-column label="下单时间" prop="createTime" width="160" />
-        <el-table-column label="操作" width="80" fixed="right">
+        <el-table-column
+          label="下单时间"
+          prop="createTime"
+          width="210"
+          class-name="col-order-time"
+          show-overflow-tooltip
+        />
+        <el-table-column label="操作" width="92" fixed="right" align="center">
           <template #default="{ row }">
             <el-button type="primary" link size="small" @click="viewOrder(row)">详情</el-button>
           </template>
@@ -206,10 +218,11 @@ const loading = ref(false)
 /** 后端聚合的仪表盘数据 */
 const overview = ref(null)
 
-const formatWan = (amount) => {
+/** 金额：实际数值，千分位，保留两位小数 */
+const formatCurrency = (amount) => {
   const n = Number(amount)
-  if (Number.isNaN(n)) return '¥0万'
-  return `¥${(n / 10000).toFixed(1)}万`
+  if (Number.isNaN(n)) return '¥0.00'
+  return `¥${n.toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
 }
 
 // 统计卡片：与 /sales/stats、商品/客户总数一致
@@ -224,7 +237,7 @@ const statistics = computed(() => {
     ]
   }
   return [
-    { icon: 'Money', iconClass: 'stat-icon--purple', value: formatWan(s.monthAmount), label: '本月销售额' },
+    { icon: 'Money', iconClass: 'stat-icon--purple', value: formatCurrency(s.monthAmount), label: '本月销售额' },
     { icon: 'ShoppingCart', iconClass: 'stat-icon--green', value: s.monthOrderCount ?? 0, label: '本月销售订单数' },
     { icon: 'Box', iconClass: 'stat-icon--blue', value: s.productCount ?? 0, label: '商品数' },
     { icon: 'User', iconClass: 'stat-icon--orange', value: s.customerCount ?? 0, label: '客户数量' }
@@ -240,7 +253,7 @@ const categoryData = computed(() => {
     name: cat.categoryName,
     value: Number(cat.amount) || 0,
     emoji: emojis[i % emojis.length],
-    amount: formatWan(cat.amount),
+    amount: formatCurrency(cat.amount),
     percent: cat.percent ?? 0,
     bgColor: `rgba(${colors[i % colors.length].slice(1)}, 0.2)`,
     barColor: colors[i % colors.length]
@@ -318,7 +331,7 @@ const getStockStatusText = (item) => {
 const formatOrderAmount = (v) => {
   const n = Number(v)
   if (Number.isNaN(n)) return '—'
-  return n.toLocaleString()
+  return n.toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 }
 
 // 获取商品图片
@@ -369,7 +382,8 @@ const initSalesChart = () => {
       trigger: 'axis',
       formatter: (params) => {
         const p = params[0]
-        return `${p.axisValue}<br/>销售额: ¥${Number(p.value).toLocaleString()}`
+        const amt = Number(p.value).toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+        return `${p.axisValue}<br/>销售额: ¥${amt}`
       }
     },
     grid: {
@@ -389,7 +403,11 @@ const initSalesChart = () => {
     yAxis: {
       type: 'value',
       axisLine: { show: false },
-      axisLabel: { color: '#909399', formatter: (v) => `¥${v}` },
+      axisLabel: {
+        color: '#909399',
+        formatter: (v) =>
+          `¥${Number(v).toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+      },
       splitLine: { lineStyle: { color: '#E4E7ED' } }
     },
     series: [{
@@ -440,7 +458,13 @@ const viewOrder = (row) => {
 // 商品列表仅用于近期订单表格里的缩略图/名称补全；无商品权限时不请求 /products
 // 统计、图表、列表数据均来自 /dashboard/overview（仅需 dashboard 权限）
 const loadData = async () => {
-  if (userStore.hasPermission('products')) {
+  if (
+    userStore.hasPermission('products') ||
+    userStore.hasPermission('product:view') ||
+    userStore.hasPermission('product:add') ||
+    userStore.hasPermission('product:edit') ||
+    userStore.hasPermission('product:delete')
+  ) {
     await dataStore.loadProducts()
   }
   await loadOverview()
@@ -538,6 +562,10 @@ onMounted(() => {
         height: 280px;
       }
 
+      .category-chart-empty {
+        padding: 48px 0;
+      }
+
       .category-list {
         .category-item {
           display: flex;
@@ -604,6 +632,19 @@ onMounted(() => {
   }
 
   .orders-card {
+    :deep(.el-card__body) {
+      width: 100%;
+    }
+
+    .recent-orders-table {
+      width: 100%;
+      /* 让表体与表头表格拉满容器，剩余宽度由仅设 min-width 的「商品信息」列吸收 */
+      :deep(.el-table__body table),
+      :deep(.el-table__header table) {
+        width: 100%;
+      }
+    }
+
     :deep(.el-card__header) {
       padding: 16px 20px;
       border-bottom: 1px solid #E4E7ED;
@@ -626,39 +667,60 @@ onMounted(() => {
       font-family: monospace;
     }
 
+    :deep(.col-order-time .cell) {
+      white-space: nowrap;
+    }
+
     .product-cell {
       display: flex;
       align-items: center;
-      gap: 12px;
+      gap: 10px;
+      min-width: 0;
 
       .product-thumb {
-        width: 40px;
-        height: 40px;
+        width: 36px;
+        height: 36px;
+        flex-shrink: 0;
         object-fit: cover;
         border-radius: 8px;
       }
 
       .product-icon {
-        width: 40px;
-        height: 40px;
+        width: 36px;
+        height: 36px;
+        flex-shrink: 0;
         border-radius: 8px;
         background: #F5F7FA;
         display: flex;
         align-items: center;
         justify-content: center;
-        font-size: 20px;
+        font-size: 18px;
       }
 
       .product-info {
-        h4 {
+        min-width: 0;
+        flex: 1;
+
+        .product-info-title,
+        .product-info-spec {
+          overflow: hidden;
+          text-overflow: ellipsis;
+          white-space: nowrap;
+        }
+
+        .product-info-title {
           font-size: 14px;
           font-weight: 600;
           color: #303133;
+          margin: 0 0 2px;
+          line-height: 1.3;
         }
 
-        p {
+        .product-info-spec {
           font-size: 12px;
           color: #909399;
+          margin: 0;
+          line-height: 1.3;
         }
       }
     }
@@ -690,6 +752,13 @@ onMounted(() => {
           font-size: 16px;
           font-weight: 600;
           color: #303133;
+        }
+      }
+
+      .top-list-empty {
+        padding: 20px 0;
+        :deep(.el-empty__description) {
+          margin-top: 8px;
         }
       }
 

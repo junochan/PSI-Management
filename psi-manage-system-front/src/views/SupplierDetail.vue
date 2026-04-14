@@ -5,7 +5,7 @@
         <div class="card-header">
           <h3>供应商详情</h3>
           <div class="header-actions">
-            <el-button type="primary" @click="editSupplier">编辑供应商</el-button>
+            <el-button v-if="canManageSupplier" type="primary" @click="editSupplier">编辑供应商</el-button>
             <el-button @click="goBack">返回</el-button>
           </div>
         </div>
@@ -44,7 +44,7 @@
     <!-- 采购记录 -->
     <el-card style="margin-top: 20px">
       <template #header><h3>采购记录</h3></template>
-      <el-table :data="supplierOrders" style="width: 100%">
+      <el-table :data="supplierOrders" empty-text="暂无数据" style="width: 100%">
         <el-table-column label="采购单号" width="150">
           <template #default="{ row }"><span class="order-no">{{ row.orderNo }}</span></template>
         </el-table-column>
@@ -91,11 +91,15 @@ import { ref, computed, onMounted } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { useDataStore } from '@/stores/data'
+import { useUserStore } from '@/stores/user'
 import { formatTime } from '@/utils/time'
 
 const router = useRouter()
 const route = useRoute()
 const dataStore = useDataStore()
+const userStore = useUserStore()
+
+const canManageSupplier = computed(() => userStore.hasPermission('purchase:supplier'))
 
 const supplierId = computed(() => route.params.id)
 const supplier = ref(null)
@@ -151,6 +155,11 @@ const getProductIcon = (productName) => {
 }
 
 onMounted(async () => {
+  if (!userStore.hasPermission('purchase:supplier')) {
+    ElMessage.warning('无供应商管理权限')
+    router.replace('/purchase')
+    return
+  }
   await Promise.all([
     dataStore.loadSuppliers(),
     dataStore.loadSupplierIndustries(),

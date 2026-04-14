@@ -1,4 +1,5 @@
 import { registerAuth } from './auth.mjs'
+import { registerDashboard } from './dashboard.mjs'
 import { registerProducts } from './products.mjs'
 import { registerEntities } from './entities.mjs'
 import { registerPurchase } from './purchase.mjs'
@@ -9,6 +10,7 @@ import { registerSystem } from './system.mjs'
 
 export function registerAll (program, ctx) {
   registerAuth(program, ctx)
+  registerDashboard(program, ctx)
   registerProducts(program, ctx)
   registerEntities(program, ctx)
   registerPurchase(program, ctx)

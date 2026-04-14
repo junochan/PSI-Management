@@ -63,7 +63,7 @@
         <span>入库记录（最近10条）</span>
         <el-button type="primary" link size="small" @click="goToAllInboundRecords" style="margin-left: 12px">查看全部</el-button>
       </el-divider>
-      <el-table :data="stockInboundRecords" style="width: 100%" max-height="300" size="small">
+      <el-table :data="stockInboundRecords" empty-text="暂无数据" style="width: 100%" max-height="300" size="small">
         <el-table-column label="入库单号" min-width="120">
           <template #default="{ row }"><span class="order-no success">{{ row.orderNo }}</span></template>
         </el-table-column>
@@ -89,7 +89,7 @@
         <span>出库记录（最近10条）</span>
         <el-button type="primary" link size="small" @click="goToAllOutboundRecords" style="margin-left: 12px">查看全部</el-button>
       </el-divider>
-      <el-table :data="stockOutboundRecords" style="width: 100%" max-height="300" size="small">
+      <el-table :data="stockOutboundRecords" empty-text="暂无数据" style="width: 100%" max-height="300" size="small">
         <el-table-column label="出库单号" min-width="120">
           <template #default="{ row }"><span class="order-no warning">{{ row.orderNo }}</span></template>
         </el-table-column>
@@ -310,12 +310,21 @@ import { ref, computed, onMounted } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { useDataStore } from '@/stores/data'
+import { useUserStore } from '@/stores/user'
 import { inventoryApi, purchaseApi, salesApi } from '@/api'
 import { formatTime } from '@/utils/time'
 
 const router = useRouter()
 const route = useRoute()
 const dataStore = useDataStore()
+const userStore = useUserStore()
+
+const hasInventoryMenu = computed(() => userStore.hasPermission('inventory'))
+/** 与列表页一致：流水数据仅在具备 inventory:records 时拉取 */
+const canInventoryRecordsTab = computed(() => userStore.hasPermission('inventory:records'))
+const canInventoryOutbound = computed(
+  () => hasInventoryMenu.value || userStore.hasPermission('inventory:outbound')
+)
 
 const stockId = computed(() => route.params.id)
 const loading = ref(false)
@@ -540,19 +549,28 @@ const getStagnantStatusText = (stockData) => {
   return `正常`
 }
 
-// 加载数据
+// 加载数据（与库存页一致：无出入库记录权限不拉流水接口）
 const loadData = async () => {
-  await Promise.all([
+  const tasks = [
     dataStore.loadInventory(),
     dataStore.loadProducts(),
     dataStore.loadWarehouses(),
     dataStore.loadCategories(),
     dataStore.loadSuppliers(),
-    dataStore.loadPurchaseOrders(),
-    dataStore.loadSalesOrders(),
-    dataStore.loadInboundRecords(),
-    dataStore.loadOutboundRecords()
-  ])
+    dataStore.loadPurchaseOrders()
+  ]
+  if (
+    canInventoryRecordsTab.value ||
+    canInventoryOutbound.value ||
+    userStore.hasPermission('sales') ||
+    userStore.hasPermission('sales:view')
+  ) {
+    tasks.push(dataStore.loadSalesOrders())
+  }
+  if (canInventoryRecordsTab.value) {
+    tasks.push(dataStore.loadInboundRecords(), dataStore.loadOutboundRecords())
+  }
+  await Promise.all(tasks)
 
   // 查找库存数据
   const inventoryData = dataStore.inventoryData || []

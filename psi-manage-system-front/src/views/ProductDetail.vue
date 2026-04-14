@@ -56,11 +56,13 @@ import { ref, computed, onMounted } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { useDataStore } from '@/stores/data'
+import { useUserStore } from '@/stores/user'
 import { productApi } from '@/api'
 
 const router = useRouter()
 const route = useRoute()
 const dataStore = useDataStore()
+const userStore = useUserStore()
 const productFormRef = ref()
 const imageUploading = ref(false)
 
@@ -95,6 +97,16 @@ const handleImageChange = async (file) => {
 }
 
 onMounted(async () => {
+  if (!editMode.value && !userStore.hasPermission('product:add')) {
+    ElMessage.warning('无添加商品权限')
+    router.replace('/products')
+    return
+  }
+  if (editMode.value && !userStore.hasPermission('product:edit')) {
+    ElMessage.warning('无编辑商品权限')
+    router.replace(`/products/view/${productId.value}`)
+    return
+  }
   await dataStore.loadProducts()
   await dataStore.loadCategories()
   if (editMode.value) {

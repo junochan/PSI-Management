@@ -28,22 +28,25 @@
 
         <el-alert v-if="role?.id === 1" type="warning" title="超级管理员拥有所有权限，不可修改" :closable="false" show-icon style="margin-bottom: 16px" />
 
-        <div class="permission-grid">
-          <div class="permission-category" v-for="category in permissionCategories" :key="category.name">
-            <h5 class="category-title">{{ category.name }}</h5>
-            <div class="permission-items">
-              <div class="permission-item" v-for="p in category.permissions" :key="p.id">
-                <el-checkbox
-                  :model-value="hasPermission(p.id)"
-                  :disabled="role?.id === 1"
-                  @change="(val) => togglePermission(p.id, val)"
-                >
-                  <span class="permission-name">{{ p.name }}</span>
-                  <span class="permission-code">{{ p.code }}</span>
-                </el-checkbox>
-              </div>
-            </div>
-          </div>
+        <div class="permission-tree-wrap" v-loading="loading">
+          <el-tree
+            ref="treeRef"
+            class="permission-tree"
+            :data="permissionTree"
+            show-checkbox
+            node-key="id"
+            check-strictly
+            default-expand-all
+            :props="treeProps"
+            @check="onTreeCheck"
+          >
+            <template #default="{ data }">
+              <span class="tree-node">
+                <span class="permission-name">{{ data.name }}</span>
+                <span v-if="data.code" class="permission-code">{{ data.code }}</span>
+              </span>
+            </template>
+          </el-tree>
         </div>
       </div>
     </el-card>
@@ -51,7 +54,7 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, nextTick } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { roleApi } from '@/api'
@@ -64,35 +67,66 @@ const role = ref(null)
 const allPermissions = ref([])
 const rolePermissions = ref([]) // 当前角色的权限ID列表
 const loading = ref(false)
+const treeRef = ref(null)
 
-// 权限分类
-const permissionCategories = computed(() => {
-  // 将权限按模块分类
-  const categories = {}
-  allPermissions.value.forEach(p => {
-    const module = p.module || '其他'
-    if (!categories[module]) {
-      categories[module] = { name: module, permissions: [] }
-    }
-    categories[module].permissions.push(p)
+const ORPHAN_GROUP_KEY = '__orphan_menu__'
+
+/** 一级：菜单(type=1)；二级：该菜单下功能(type=2 且 parentId 指向菜单 id) */
+const permissionTree = computed(() => {
+  const list = allPermissions.value
+  if (!list.length) return []
+
+  const menus = list
+    .filter((p) => p.type === 1)
+    .sort((a, b) => (a.sort ?? 0) - (b.sort ?? 0))
+  const funcs = list.filter((p) => p.type === 2)
+
+  const menuIdSet = new Set(menus.map((m) => Number(m.id)))
+  const tree = menus.map((m) => ({
+    ...m,
+    children: funcs
+      .filter((f) => Number(f.parentId) === Number(m.id))
+      .sort((a, b) => (a.sort ?? 0) - (b.sort ?? 0))
+  }))
+
+  const orphans = funcs.filter((f) => {
+    const pid = f.parentId != null ? Number(f.parentId) : NaN
+    return !Number.isFinite(pid) || !menuIdSet.has(pid)
   })
-  return Object.values(categories)
+  if (orphans.length) {
+    tree.push({
+      id: ORPHAN_GROUP_KEY,
+      name: '其他',
+      code: '',
+      type: 1,
+      disabled: true,
+      children: orphans.sort((a, b) => (a.sort ?? 0) - (b.sort ?? 0))
+    })
+  }
+
+  return tree
 })
 
-// 判断是否有某权限
-const hasPermission = (permissionId) => {
-  return rolePermissions.value.includes(permissionId)
+const treeProps = computed(() => ({
+  label: 'name',
+  children: 'children',
+  disabled: (data) => role.value?.id === 1 || data.disabled === true
+}))
+
+const syncTreeCheckedKeys = () => {
+  nextTick(() => {
+    const ids = rolePermissions.value.map((id) => Number(id)).filter((id) => Number.isFinite(id))
+    treeRef.value?.setCheckedKeys(ids, false)
+  })
 }
 
-// 切换权限
-const togglePermission = (permissionId, has) => {
-  if (has) {
-    if (!rolePermissions.value.includes(permissionId)) {
-      rolePermissions.value.push(permissionId)
-    }
-  } else {
-    rolePermissions.value = rolePermissions.value.filter(id => id !== permissionId)
-  }
+const onTreeCheck = () => {
+  if (role.value?.id === 1 || !treeRef.value) return
+  const keys = treeRef.value.getCheckedKeys(false)
+  const valid = new Set(allPermissions.value.map((p) => Number(p.id)))
+  rolePermissions.value = keys
+    .map((k) => Number(k))
+    .filter((id) => valid.has(id))
 }
 
 // 保存权限
@@ -115,6 +149,7 @@ const savePermissions = async () => {
 
 // 加载角色和权限数据
 const loadData = async () => {
+  loading.value = true
   try {
     // 获取角色信息
     const roles = await roleApi.list() || []
@@ -126,9 +161,12 @@ const loadData = async () => {
     // 获取该角色的权限
     const permissions = await roleApi.permissions(Number(roleId.value))
     rolePermissions.value = permissions.map(p => p.id)
+    syncTreeCheckedKeys()
   } catch (error) {
     console.error('加载权限数据失败:', error)
     ElMessage.error('加载数据失败')
+  } finally {
+    loading.value = false
   }
 }
 
@@ -185,48 +223,41 @@ onMounted(() => {
     }
   }
 
-  .permission-grid {
-    display: grid;
-    grid-template-columns: repeat(2, 1fr);
-    gap: 24px;
-
-    .permission-category {
-      .category-title {
-        font-size: 14px;
-        font-weight: 600;
-        color: #606266;
-        margin-bottom: 12px;
-        padding-bottom: 8px;
-        border-bottom: 1px solid #E4E7ED;
-      }
-
-      .permission-items {
-        .permission-item {
-          display: flex;
-          align-items: center;
-          padding: 8px 0;
-
-          .permission-name {
-            font-size: 14px;
-            color: #303133;
-          }
-
-          .permission-code {
-            font-size: 12px;
-            color: #909399;
-            margin-left: 8px;
-            font-family: monospace;
-          }
-        }
-      }
-    }
+  .permission-tree-wrap {
+    min-height: 120px;
+    padding: 8px 0;
+    border: 1px solid var(--el-border-color-lighter);
+    border-radius: 8px;
+    background: var(--el-fill-color-blank);
   }
-}
 
-@media (max-width: 1200px) {
-  .permission-page {
-    .permission-grid {
-      grid-template-columns: 1fr;
+  .permission-tree {
+    padding: 8px 12px;
+    background: transparent;
+
+    :deep(.el-tree-node__content) {
+      height: auto;
+      min-height: 32px;
+      padding: 4px 0;
+      align-items: flex-start;
+    }
+
+    .tree-node {
+      display: inline-flex;
+      flex-wrap: wrap;
+      align-items: baseline;
+      gap: 8px;
+    }
+
+    .permission-name {
+      font-size: 14px;
+      color: #303133;
+    }
+
+    .permission-code {
+      font-size: 12px;
+      color: #909399;
+      font-family: monospace;
     }
   }
 }

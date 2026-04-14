@@ -21,6 +21,7 @@
               style="width: 200px"
             />
             <el-upload
+              v-if="canProductRead"
               accept="image/*"
               :auto-upload="false"
               :show-file-list="false"
@@ -30,6 +31,7 @@
             </el-upload>
             <img v-if="queryImageDataUrl" :src="queryImageDataUrl" class="image-query-thumb" alt="" />
             <el-input-number
+              v-if="canProductRead"
               v-model="imageSimilarityThreshold"
               :min="0.2"
               :max="0.99"
@@ -38,11 +40,11 @@
               size="small"
               style="width: 108px"
             />
-            <el-button type="primary" size="small" :loading="imageSearchLoading" @click="submitImageSearch">以图搜图</el-button>
+            <el-button v-if="canProductRead" type="primary" size="small" :loading="imageSearchLoading" @click="submitImageSearch">以图搜图</el-button>
             <el-button v-if="imageSearchMode" type="info" size="small" link @click="exitImageSearch">退出图搜</el-button>
-            <el-button type="success" @click="handleImport"><el-icon><Upload /></el-icon>批量导入</el-button>
-            <el-button type="info" @click="handleExport"><el-icon><Download /></el-icon>批量导出</el-button>
-            <el-button type="primary" @click="openAddDialog">
+            <el-button v-if="canProductAdd" type="success" @click="handleImport"><el-icon><Upload /></el-icon>批量导入</el-button>
+            <el-button v-if="canProductRead" type="info" @click="handleExport"><el-icon><Download /></el-icon>批量导出</el-button>
+            <el-button v-if="canProductAdd" type="primary" @click="openAddDialog">
               <el-icon><Plus /></el-icon>
               添加商品
             </el-button>
@@ -53,6 +55,7 @@
       <el-table
         class="product-list-table"
         :data="paginatedProducts"
+        empty-text="暂无数据"
         style="width: 100%"
         table-layout="fixed"
         :max-height="520"
@@ -103,8 +106,8 @@
           <template #default="{ row }">
             <div class="product-row-actions">
               <el-button type="primary" link size="small" @click="viewProduct(row)">详情</el-button>
-              <el-button type="primary" link size="small" @click="editProduct(row)">编辑</el-button>
-              <el-button type="danger" link size="small" @click="deleteProductConfirm(row)">删除</el-button>
+              <el-button v-if="canProductEdit" type="primary" link size="small" @click="editProduct(row)">编辑</el-button>
+              <el-button v-if="canProductDelete" type="danger" link size="small" @click="deleteProductConfirm(row)">删除</el-button>
             </div>
           </template>
         </el-table-column>
@@ -219,7 +222,7 @@
       </el-descriptions>
       <template #footer>
         <el-button @click="productDetailVisible = false">关闭</el-button>
-        <el-button type="primary" @click="router.push(`/products/edit/${currentProduct?.id}`); productDetailVisible = false">编辑</el-button>
+        <el-button v-if="canProductEdit" type="primary" @click="router.push(`/products/edit/${currentProduct?.id}`); productDetailVisible = false">编辑</el-button>
       </template>
     </el-dialog>
 
@@ -255,11 +258,25 @@ import { ref, computed, onMounted, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { useDataStore } from '@/stores/data'
+import { useUserStore } from '@/stores/user'
 import { productApi } from '@/api'
 import * as XLSX from 'xlsx'
 
 const router = useRouter()
 const dataStore = useDataStore()
+const userStore = useUserStore()
+
+/** 仅商品查看或更高操作权限（用于列表、导出、以图搜图等） */
+const canProductRead = computed(() =>
+  userStore.hasPermission('products') ||
+  userStore.hasPermission('product:view') ||
+  userStore.hasPermission('product:add') ||
+  userStore.hasPermission('product:edit') ||
+  userStore.hasPermission('product:delete')
+)
+const canProductAdd = computed(() => userStore.hasPermission('product:add'))
+const canProductEdit = computed(() => userStore.hasPermission('product:edit'))
+const canProductDelete = computed(() => userStore.hasPermission('product:delete'))
 
 const searchKeyword = ref('')
 const filterCategory = ref(null)
@@ -351,6 +368,10 @@ const onProductQueryImageChange = (uploadFile) => {
 }
 
 const submitImageSearch = async () => {
+  if (!canProductRead.value) {
+    ElMessage.warning('无商品数据查看权限')
+    return
+  }
   if (!queryImageDataUrl.value) {
     ElMessage.warning('请先上传图片')
     return
@@ -465,6 +486,10 @@ const getProductStatusType = (status) => {
 
 // 打开添加对话框
 const openAddDialog = () => {
+  if (!canProductAdd.value) {
+    ElMessage.warning('无添加商品权限')
+    return
+  }
   editMode.value = false
   productForm.value = {
     name: '',
@@ -501,6 +526,10 @@ const handleImageChange = async (file) => {
 
 // 编辑商品
 const editProduct = (row) => {
+  if (!canProductEdit.value) {
+    ElMessage.warning('无编辑商品权限')
+    return
+  }
   router.push(`/products/edit/${row.id}`)
 }
 
@@ -511,6 +540,10 @@ const viewProduct = (row) => {
 
 // 删除商品确认 - 调用后端API
 const deleteProductConfirm = async (row) => {
+  if (!canProductDelete.value) {
+    ElMessage.warning('无删除商品权限')
+    return
+  }
   try {
     await ElMessageBox.confirm(`确定要删除商品 "${row.name}" 吗？`, '删除确认', {
       confirmButtonText: '确定',
@@ -533,6 +566,14 @@ const submitProduct = async () => {
 
   await productFormRef.value.validate(async (valid) => {
     if (valid) {
+      if (editMode.value && !canProductEdit.value) {
+        ElMessage.warning('无编辑商品权限')
+        return
+      }
+      if (!editMode.value && !canProductAdd.value) {
+        ElMessage.warning('无添加商品权限')
+        return
+      }
       loading.value = true
       try {
         // 构造后端需要的DTO格式
@@ -571,6 +612,10 @@ const submitProduct = async () => {
 
 // 批量导入
 const handleImport = () => {
+  if (!canProductAdd.value) {
+    ElMessage.warning('无添加商品权限')
+    return
+  }
   importDialogVisible.value = true
 }
 
@@ -579,6 +624,10 @@ const handleFileChange = (file) => {
 }
 
 const executeImport = () => {
+  if (!canProductAdd.value) {
+    ElMessage.warning('无添加商品权限')
+    return
+  }
   if (!uploadFile.value) {
     ElMessage.warning('请先选择要导入的文件')
     return
@@ -589,6 +638,10 @@ const executeImport = () => {
 
 // 批量导出 - 按当前筛选条件拉取后导出
 const handleExport = async () => {
+  if (!canProductRead.value) {
+    ElMessage.warning('无商品数据查看权限')
+    return
+  }
   if (imageSearchMode.value) {
     ElMessage.warning('请先退出以图搜图后再导出')
     return

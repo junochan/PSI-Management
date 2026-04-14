@@ -15,6 +15,7 @@ import com.smartims.util.CodeGenerator;
 import com.smartims.vo.SalesStatsVO;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.dao.DuplicateKeyException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
@@ -25,6 +26,7 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.LocalTime;
 import java.time.YearMonth;
+import java.time.format.DateTimeFormatter;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -41,6 +43,9 @@ import java.util.Set;
 @Service
 @RequiredArgsConstructor
 public class SalesServiceImpl implements SalesService {
+
+    private static final DateTimeFormatter SALES_ORDER_DATE = DateTimeFormatter.ofPattern("yyMMdd");
+    private static final int MAX_SALES_ORDER_NO_ATTEMPTS = 5;
 
     private final SalesOrderMapper salesOrderMapper;
     private final CustomerMapper customerMapper;
@@ -191,7 +196,6 @@ public class SalesServiceImpl implements SalesService {
 
         // 创建销售订单
         SalesOrder order = new SalesOrder();
-        order.setOrderNo(CodeGenerator.generateSalesOrderNo());
         order.setCustomerId(dto.getCustomerId());
         order.setCustomerName(customer.getName());
         order.setCustomerType(customer.getType());
@@ -222,8 +226,41 @@ public class SalesServiceImpl implements SalesService {
             }
         }
 
-        salesOrderMapper.insert(order);
-        log.info("创建销售订单成功：orderNo={}", order.getOrderNo());
+        for (int attempt = 0; attempt < MAX_SALES_ORDER_NO_ATTEMPTS; attempt++) {
+            order.setOrderNo(allocateSalesOrderNo());
+            try {
+                salesOrderMapper.insert(order);
+                log.info("创建销售订单成功：orderNo={}", order.getOrderNo());
+                return;
+            } catch (DuplicateKeyException e) {
+                log.warn("销售单号冲突，重新分配 attempt={} orderNo={}", attempt + 1, order.getOrderNo());
+                if (attempt == MAX_SALES_ORDER_NO_ATTEMPTS - 1) {
+                    throw new BusinessException("销售单号生成失败，请稍后重试");
+                }
+            }
+        }
+    }
+
+    /**
+     * 生成当日唯一销售单号，与 {@link CodeGenerator#generateSalesOrderNo()} 格式一致。
+     */
+    private String allocateSalesOrderNo() {
+        String dateStr = LocalDate.now().format(SALES_ORDER_DATE);
+        String prefix = CodeGenerator.SALES_PREFIX + dateStr;
+        String maxNo = salesOrderMapper.selectMaxOrderNoByDatePrefix(prefix);
+        int nextSeq = 1;
+        if (maxNo != null && maxNo.length() >= prefix.length() + 4) {
+            try {
+                String tail = maxNo.substring(maxNo.length() - 4);
+                nextSeq = Integer.parseInt(tail) + 1;
+            } catch (NumberFormatException ignored) {
+                nextSeq = 1;
+            }
+        }
+        if (nextSeq < 1 || nextSeq > 9999) {
+            throw new BusinessException("当日销售单序号已用尽，请联系管理员");
+        }
+        return prefix + String.format("%04d", nextSeq);
     }
 
     @Override

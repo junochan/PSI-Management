@@ -1,3 +1,5 @@
+import fs from 'fs'
+import FormData from 'form-data'
 import { printJson, readBodyFromOptions, parseQueryJson, getRootOptions } from '../lib/util.mjs'
 import { fetchUtilEncode } from '../lib/client.mjs'
 
@@ -56,6 +58,22 @@ export function registerSystem (program, { getApi }) {
     .action(async (id, _opts, cmd) => {
       await getApi(cmd).delete(`/users/${id}`)
       printJson({ ok: true })
+    })
+
+  users
+    .command('upload-avatar')
+    .description('POST /users/avatar（multipart，字段名 file）')
+    .requiredOption('--file <path>', '本地图片路径')
+    .action(async (opts, cmd) => {
+      const api = getApi(cmd)
+      const form = new FormData()
+      form.append('file', fs.createReadStream(opts.file))
+      const data = await api.post('/users/avatar', form, {
+        headers: form.getHeaders(),
+        maxBodyLength: Infinity,
+        maxContentLength: Infinity
+      })
+      printJson(data)
     })
 
   const roles = program.command('roles').description('角色与权限')

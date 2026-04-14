@@ -34,7 +34,7 @@
                   value-format="YYYY-MM-DD"
                 />
                 <el-input v-model="searchKeyword" placeholder="搜索订单号、客户名称..." prefix-icon="Search" clearable style="width: 180px" />
-                <el-button type="primary" @click="openSalesDialog"><el-icon><Plus /></el-icon>新建销售单</el-button>
+                <el-button v-if="canAddSalesOrder" type="primary" @click="openSalesDialog"><el-icon><Plus /></el-icon>新建销售单</el-button>
               </div>
             </div>
           </template>
@@ -57,7 +57,7 @@
               <span class="stat-value success">¥{{ orderListSummary.paidAmount.toLocaleString() }}</span>
             </div>
           </div>
-          <el-table :data="salesOrderTableRows" style="width: 100%" :max-height="500">
+          <el-table :data="salesOrderTableRows" empty-text="暂无数据" style="width: 100%" :max-height="500">
             <el-table-column label="单号" width="130">
               <template #default="{ row }"><span class="order-no">{{ row.orderNo }}</span></template>
             </el-table-column>
@@ -96,9 +96,27 @@
             <el-table-column label="操作" width="220" fixed="right" align="center">
               <template #default="{ row }">
                 <el-button type="primary" link size="small" @click="viewSalesOrder(row)">详情</el-button>
-                <el-button type="success" link size="small" @click="handlePayment(row)" v-if="row.status === 'pending' && row.payStatus === 'unpaid'">确认付款</el-button>
-                <el-button type="primary" link size="small" @click="handleShip(row)" v-if="row.status === 'pending' && row.payStatus === 'paid'">发货</el-button>
-                <el-button type="success" link size="small" @click="handleReceived(row)" v-if="row.status === 'shipped'">确认收货</el-button>
+                <el-button
+                  v-if="canConfirmPayment && row.status === 'pending' && row.payStatus === 'unpaid'"
+                  type="success"
+                  link
+                  size="small"
+                  @click="handlePayment(row)"
+                >确认付款</el-button>
+                <el-button
+                  v-if="canShipOrder && row.status === 'pending' && row.payStatus === 'paid'"
+                  type="primary"
+                  link
+                  size="small"
+                  @click="handleShip(row)"
+                >发货</el-button>
+                <el-button
+                  v-if="canReceiveOrder && row.status === 'shipped'"
+                  type="success"
+                  link
+                  size="small"
+                  @click="handleReceived(row)"
+                >确认收货</el-button>
               </template>
             </el-table-column>
           </el-table>
@@ -118,9 +136,10 @@
       <el-tab-pane label="客户管理" name="customers">
         <div class="customer-search-bar">
           <el-input v-model="customerSearchKeyword" placeholder="搜索客户名称..." prefix-icon="Search" clearable style="width: 200px" />
-          <el-button type="primary" @click="openCustomerDialog"><el-icon><Plus /></el-icon>添加客户</el-button>
+          <el-button v-if="canManageCustomer" type="primary" @click="openCustomerDialog"><el-icon><Plus /></el-icon>添加客户</el-button>
         </div>
-        <div class="customers-grid">
+        <el-empty v-if="!filteredCustomers.length" class="grid-empty" description="暂无数据" :image-size="80" />
+        <div v-else class="customers-grid">
           <el-card class="customer-card" v-for="c in filteredCustomers" :key="c.id">
             <div class="customer-header">
               <div class="customer-avatar">{{ c.type === '企业' ? '🏢' : '👤' }}</div>
@@ -152,7 +171,7 @@
             </div>
             <div class="customer-actions">
               <el-button type="primary" @click="viewCustomerDetail(c)">查看详情</el-button>
-              <el-button @click="editCustomer(c)">编辑</el-button>
+              <el-button v-if="canManageCustomer" @click="editCustomer(c)">编辑</el-button>
             </div>
           </el-card>
         </div>
@@ -172,11 +191,11 @@
                   <el-option label="已完成" value="已完成" />
                   <el-option label="已关闭" value="已关闭" />
                 </el-select>
-                <el-button type="primary" @click="openAftersalesDialog"><el-icon><Plus /></el-icon>创建售后工单</el-button>
+                <el-button v-if="canAftersalesCreate" type="primary" @click="openAftersalesDialog"><el-icon><Plus /></el-icon>创建售后工单</el-button>
               </div>
             </div>
           </template>
-          <el-table :data="aftersalesTableRows" style="width: 100%" :max-height="500">
+          <el-table :data="aftersalesTableRows" empty-text="暂无数据" style="width: 100%" :max-height="500">
             <el-table-column label="工单号" width="140">
               <template #default="{ row }"><span class="order-no warning">{{ row.orderNo }}</span></template>
             </el-table-column>
@@ -562,10 +581,24 @@ import { ref, computed, onMounted, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { useDataStore } from '@/stores/data'
+import { useUserStore } from '@/stores/user'
 import { salesApi, customerApi, aftersalesApi } from '@/api'
 
 const router = useRouter()
 const dataStore = useDataStore()
+const userStore = useUserStore()
+
+const canAddSalesOrder = computed(() => userStore.hasPermission('sales:add'))
+/** 确认付款：更新订单支付状态 */
+const canConfirmPayment = computed(
+  () => userStore.hasPermission('sales:payment') || userStore.hasPermission('sales:add')
+)
+const canShipOrder = computed(() => userStore.hasPermission('sales:ship'))
+const canReceiveOrder = computed(
+  () => userStore.hasPermission('sales:receive') || userStore.hasPermission('sales:ship')
+)
+const canManageCustomer = computed(() => userStore.hasPermission('sales:customer'))
+const canAftersalesCreate = computed(() => userStore.hasPermission('sales:aftersales'))
 
 const activeTab = ref('orders')
 const searchKeyword = ref('')
@@ -926,15 +959,37 @@ const getAftersalesTypeColor = (type) => {
 }
 
 const openSalesDialog = async () => {
+  if (!canAddSalesOrder.value) {
+    ElMessage.warning('无新建销售单权限')
+    return
+  }
   await loadData()
   salesForm.value = { customerId: null, date: new Date(), productId: null, quantity: 1, payMethod: '银行转账', invoiceType: '不需要发票', remark: '' }
   salesDialogVisible.value = true
 }
-const openCustomerDialog = () => { customerForm.value = { name: '', type: '个人', address: '', contact: '', phone: '', email: '', remark: '' }; customerDialogVisible.value = true }
-const openAftersalesDialog = () => { aftersalesForm.value = { salesOrderId: null, type: '质量问题', content: '', expect: '退货退款' }; aftersalesDialogVisible.value = true }
+const openCustomerDialog = () => {
+  if (!canManageCustomer.value) {
+    ElMessage.warning('无客户管理权限')
+    return
+  }
+  customerForm.value = { name: '', type: '个人', address: '', contact: '', phone: '', email: '', remark: '' }
+  customerDialogVisible.value = true
+}
+const openAftersalesDialog = () => {
+  if (!canAftersalesCreate.value) {
+    ElMessage.warning('无售后工单权限')
+    return
+  }
+  aftersalesForm.value = { salesOrderId: null, type: '质量问题', content: '', expect: '退货退款' }
+  aftersalesDialogVisible.value = true
+}
 
 // 提交销售订单 - 调用后端API
 const submitSales = async () => {
+  if (!canAddSalesOrder.value) {
+    ElMessage.warning('无新建销售单权限')
+    return
+  }
   if (!salesFormRef.value) return
   await salesFormRef.value.validate(async (valid) => {
     if (valid) {
@@ -967,6 +1022,10 @@ const submitSales = async () => {
 
 // 提交客户 - 调用后端API
 const submitCustomer = async () => {
+  if (!canManageCustomer.value) {
+    ElMessage.warning('无客户管理权限')
+    return
+  }
   if (!customerFormRef.value) return
   await customerFormRef.value.validate(async (valid) => {
     if (valid) {
@@ -1005,6 +1064,10 @@ const submitCustomer = async () => {
 
 // 编辑客户
 const editCustomer = (c) => {
+  if (!canManageCustomer.value) {
+    ElMessage.warning('无客户管理权限')
+    return
+  }
   customerForm.value = {
     id: c.id,
     name: c.name,
@@ -1020,6 +1083,10 @@ const editCustomer = (c) => {
 
 // 提交售后工单 - 调用后端API
 const submitAftersales = async () => {
+  if (!canAftersalesCreate.value) {
+    ElMessage.warning('无售后工单权限')
+    return
+  }
   if (!aftersalesFormRef.value) return
   await aftersalesFormRef.value.validate(async (valid) => {
     if (valid) {
@@ -1049,6 +1116,10 @@ const submitAftersales = async () => {
 
 const viewSalesOrder = (row) => { router.push(`/sales/order/${row.id}`) }
 const handleShip = async (row) => {
+  if (!canShipOrder.value) {
+    ElMessage.warning('无发货权限')
+    return
+  }
   await dataStore.loadInventory()
   await dataStore.loadWarehouses()
   const customer = customers.value.find(c => c.id === row.customerId)
@@ -1114,6 +1185,10 @@ const onWarehouseChange = (warehouseId) => {
 
 // 发货 - 调用后端API
 const submitShip = async () => {
+  if (!canShipOrder.value) {
+    ElMessage.warning('无发货权限')
+    return
+  }
   if (!shipFormRef.value) return
   await shipFormRef.value.validate(async (valid) => {
     if (valid) {
@@ -1145,6 +1220,10 @@ const submitShip = async () => {
 
 // 确认付款
 const handlePayment = async (row) => {
+  if (!canConfirmPayment.value) {
+    ElMessage.warning('无确认付款权限')
+    return
+  }
   try {
     await salesApi.payment(row.id)
     ElMessage.success(`订单 ${row.orderNo} 已确认付款`)
@@ -1160,6 +1239,10 @@ const handlePayment = async (row) => {
 
 // 确认收货
 const handleReceived = async (row) => {
+  if (!canReceiveOrder.value) {
+    ElMessage.warning('无确认收货权限')
+    return
+  }
   try {
     await salesApi.received(row.id)
     ElMessage.success(`订单 ${row.orderNo} 已确认收货`)
@@ -1277,6 +1360,7 @@ onMounted(() => {
     .customer-info { h4 { font-size: 14px; font-weight: 600; color: #303133; } p { font-size: 12px; color: #909399; } }
   }
   .customer-search-bar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; }
+  .grid-empty { padding: 32px 0; }
   .customers-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 20px; margin-bottom: 20px; }
   .customer-card {
     :deep(.el-card__body) { padding: 24px; }

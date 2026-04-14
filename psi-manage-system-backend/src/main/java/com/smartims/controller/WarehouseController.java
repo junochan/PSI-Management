@@ -29,6 +29,13 @@ public class WarehouseController {
 
     private final WarehouseService warehouseService;
 
+    @Operation(summary = "仓库下拉（id/编码/名称，无统计）")
+    @GetMapping("/options")
+    public Result<List<Warehouse>> listOptions() {
+        List<Warehouse> list = warehouseService.listOptions();
+        return Result.success(list);
+    }
+
     @Operation(summary = "查询仓库列表")
     @GetMapping
     public Result<PageResult<Warehouse>> getWarehouseList(PageQuery pageQuery) {

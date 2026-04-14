@@ -31,6 +31,12 @@ public class NavigationServiceImpl implements NavigationService {
     /** 库中有菜单但暂无前端页面的权限编码（避免点进 404） */
     private static final Set<String> MENU_CODES_WITHOUT_PAGE = Set.of("reports");
 
+    /** 商品管理菜单：有菜单码或任一商品操作/查看码均可显示入口 */
+    private static final String MENU_PRODUCTS = "products";
+
+    /** 库存管理菜单：有菜单码或任一库存类操作码均可显示入口 */
+    private static final String MENU_INVENTORY = "inventory";
+
     private final SysUserMapper sysUserMapper;
     private final SysPermissionMapper sysPermissionMapper;
     private final PermissionService permissionService;
@@ -128,7 +134,36 @@ public class NavigationServiceImpl implements NavigationService {
             return codeSet.contains("settings")
                     || codeSet.stream().anyMatch(x -> x != null && x.startsWith("settings:"));
         }
+        if (MENU_PRODUCTS.equals(c)) {
+            return hasAnyProductMenuAccess(codeSet);
+        }
+        if (MENU_INVENTORY.equals(c)) {
+            return hasAnyInventoryMenuAccess(codeSet);
+        }
         return codeSet.contains(c);
+    }
+
+    private boolean hasAnyInventoryMenuAccess(Set<String> codeSet) {
+        if (codeSet.contains(MENU_INVENTORY)) {
+            return true;
+        }
+        return codeSet.contains("inventory:view")
+                || codeSet.contains("inventory:transfer")
+                || codeSet.contains("inventory:warehouse")
+                || codeSet.contains("inventory:inbound")
+                || codeSet.contains("inventory:outbound")
+                || codeSet.contains("inventory:adjust")
+                || codeSet.contains("inventory:records");
+    }
+
+    private boolean hasAnyProductMenuAccess(Set<String> codeSet) {
+        if (codeSet.contains(MENU_PRODUCTS)) {
+            return true;
+        }
+        return codeSet.contains("product:view")
+                || codeSet.contains("product:add")
+                || codeSet.contains("product:edit")
+                || codeSet.contains("product:delete");
     }
 
     private List<UiRouteVO> filterUiRoutes(boolean superAdmin, Set<String> codeSet) {
@@ -153,6 +188,24 @@ public class NavigationServiceImpl implements NavigationService {
         if ("SETTINGS_ANY".equals(def.getPermissionMode())) {
             return codeSet.contains("settings")
                     || codeSet.stream().anyMatch(x -> x != null && x.startsWith("settings:"));
+        }
+        String path = def.getPath();
+        if ("products".equals(path) || "products/view/:id".equals(path)) {
+            return hasAnyProductMenuAccess(codeSet);
+        }
+        if ("products/add".equals(path)) {
+            return codeSet.contains("product:add");
+        }
+        if ("products/edit/:id".equals(path)) {
+            return codeSet.contains("product:edit");
+        }
+        if ("inventory/warehouse/:id".equals(path)) {
+            return codeSet.contains(MENU_INVENTORY) || codeSet.contains("inventory:warehouse");
+        }
+        if ("inventory".equals(path)
+                || "inventory/stock/:id".equals(path)
+                || "inventory/transfer/:id".equals(path)) {
+            return hasAnyInventoryMenuAccess(codeSet);
         }
         return codeSet.contains(def.getPermissionCode());
     }

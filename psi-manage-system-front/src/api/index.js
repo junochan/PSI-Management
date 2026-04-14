@@ -116,6 +116,8 @@ export const customerApi = {
 
 // 仓库 API
 export const warehouseApi = {
+  /** 下拉用 id/编码/名称（无统计） */
+  options: () => api.get('/warehouses/options'),
   list: (params) => api.get('/warehouses', { params }),
   all: () => api.get('/warehouses/all'),
   get: (id) => api.get(`/warehouses/${id}`),
@@ -188,7 +190,9 @@ export const authApi = {
   login: (data) => api.post('/auth/login', data),
   logout: () => api.post('/auth/logout'),
   /** 菜单树、权限码、前端路由表（需登录） */
-  navigation: () => api.get('/auth/navigation')
+  navigation: () => api.get('/auth/navigation'),
+  /** 当前用户修改密码（需登录，成功后建议重新登录） */
+  changePassword: (data) => api.post('/auth/change-password', data)
 }
 
 // 仪表盘 API（聚合真实统计数据）

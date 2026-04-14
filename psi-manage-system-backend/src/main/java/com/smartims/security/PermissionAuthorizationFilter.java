@@ -102,7 +102,8 @@ public class PermissionAuthorizationFilter extends OncePerRequestFilter {
     /** 已登录即可，不按业务模块鉴权 */
     private boolean isAuthWithoutModulePermissionCheck(String uri) {
         return pathMatcher.match("/v1/auth/logout", uri)
-                || pathMatcher.match("/v1/auth/navigation", uri);
+                || pathMatcher.match("/v1/auth/navigation", uri)
+                || pathMatcher.match("/v1/auth/change-password", uri);
     }
 
     private boolean hasAuthority(Authentication authentication, String authority) {

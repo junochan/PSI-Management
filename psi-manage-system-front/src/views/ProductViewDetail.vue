@@ -5,7 +5,7 @@
         <div class="card-header">
           <h3>商品详情</h3>
           <div class="header-actions">
-            <el-button type="primary" @click="editProduct">编辑</el-button>
+            <el-button v-if="canProductEdit" type="primary" @click="editProduct">编辑</el-button>
             <el-button @click="goBack">返回</el-button>
           </div>
         </div>
@@ -45,11 +45,15 @@
 import { ref, computed, onMounted } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { useDataStore } from '@/stores/data'
+import { useUserStore } from '@/stores/user'
 import { formatTime } from '@/utils/time'
 
 const router = useRouter()
 const route = useRoute()
 const dataStore = useDataStore()
+const userStore = useUserStore()
+
+const canProductEdit = computed(() => userStore.hasPermission('product:edit'))
 
 const productId = computed(() => route.params.id)
 const product = ref(null)

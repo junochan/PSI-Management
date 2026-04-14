@@ -10,7 +10,7 @@
               <el-button type="primary" size="small" @click="openUserDialog"><el-icon><Plus /></el-icon>添加用户</el-button>
             </div>
           </template>
-          <el-table :data="paginatedUsers" style="width: 100%" table-layout="fixed">
+          <el-table :data="paginatedUsers" empty-text="暂无数据" style="width: 100%" table-layout="fixed">
             <el-table-column label="登录名" prop="username" min-width="120" show-overflow-tooltip />
             <el-table-column label="姓名" prop="name" min-width="120" show-overflow-tooltip />
             <el-table-column label="邮箱" prop="email" min-width="200" show-overflow-tooltip />
@@ -55,7 +55,7 @@
               <el-button type="primary" size="small" @click="openRoleDialog"><el-icon><Plus /></el-icon>添加角色</el-button>
             </div>
           </template>
-          <el-table :data="paginatedRoleList" style="width: 100%" table-layout="fixed">
+          <el-table :data="paginatedRoleList" empty-text="暂无数据" style="width: 100%" table-layout="fixed">
             <el-table-column label="角色名称" prop="name" min-width="160" show-overflow-tooltip />
             <el-table-column label="角色级别" min-width="108" align="center">
               <template #default="{ row }">
@@ -121,7 +121,7 @@
               <el-button type="primary" size="small" @click="openCategoryDialog"><el-icon><Plus /></el-icon>添加分类</el-button>
             </div>
           </template>
-          <el-table :data="paginatedCategoryList" style="width: 100%" table-layout="fixed">
+          <el-table :data="paginatedCategoryList" empty-text="暂无数据" style="width: 100%" table-layout="fixed">
             <el-table-column label="分类名称" prop="name" min-width="160" show-overflow-tooltip />
             <el-table-column label="分类编码" prop="code" min-width="132" show-overflow-tooltip />
             <el-table-column label="排序" prop="sort" min-width="88" align="center" />
@@ -152,7 +152,7 @@
       <!-- 操作日志 -->
       <el-tab-pane label="操作日志" name="logs">
         <el-card>
-          <el-table :data="paginatedLogs" style="width: 100%" :max-height="500" table-layout="fixed">
+          <el-table :data="paginatedLogs" empty-text="暂无数据" style="width: 100%" :max-height="500" table-layout="fixed">
             <el-table-column label="时间" min-width="184" show-overflow-tooltip>
               <template #default="{ row }">{{ formatTime(row.createTime) }}</template>
             </el-table-column>

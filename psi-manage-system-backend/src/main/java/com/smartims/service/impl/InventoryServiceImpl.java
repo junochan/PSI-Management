@@ -22,6 +22,7 @@ import com.smartims.util.CodeGenerator;
 import com.smartims.vo.InventoryStatsVO;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.dao.DuplicateKeyException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
@@ -53,6 +54,8 @@ public class InventoryServiceImpl implements InventoryService {
 
     private static final int IMAGE_SEARCH_MAX_ROWS = 5000;
     private static final DateTimeFormatter ISO_DATE = DateTimeFormatter.ISO_LOCAL_DATE;
+    private static final DateTimeFormatter ORDER_NO_DATE = DateTimeFormatter.ofPattern("yyMMdd");
+    private static final int MAX_ORDER_NO_ALLOC_ATTEMPTS = 5;
 
     private final InventoryMapper inventoryMapper;
     private final ProductMapper productMapper;
@@ -170,9 +173,8 @@ public class InventoryServiceImpl implements InventoryService {
             throw new BusinessException("源仓库库存不足");
         }
 
-        // 创建调拨单
+        // 创建调拨单（单号按库内当日最大序号递增，避免进程重启后与历史单号冲突）
         InventoryTransfer transfer = new InventoryTransfer();
-        transfer.setOrderNo(CodeGenerator.generateTransferOrderNo());
         transfer.setProductId(dto.getProductId());
         transfer.setProductName(product.getName());
         transfer.setSku(product.getCode());
@@ -184,8 +186,115 @@ public class InventoryServiceImpl implements InventoryService {
         transfer.setStatus("pending"); // 待确认
         transfer.setRemark(dto.getRemark());
 
-        inventoryTransferMapper.insert(transfer);
-        log.info("创建调拨单成功：orderNo={}", transfer.getOrderNo());
+        for (int attempt = 0; attempt < MAX_ORDER_NO_ALLOC_ATTEMPTS; attempt++) {
+            transfer.setOrderNo(allocateTransferOrderNo());
+            try {
+                inventoryTransferMapper.insert(transfer);
+                log.info("创建调拨单成功：orderNo={}", transfer.getOrderNo());
+                return;
+            } catch (DuplicateKeyException e) {
+                log.warn("调拨单号冲突，重新分配 attempt={} orderNo={}", attempt + 1, transfer.getOrderNo());
+                if (attempt == MAX_ORDER_NO_ALLOC_ATTEMPTS - 1) {
+                    throw new BusinessException("调拨单号生成失败，请稍后重试");
+                }
+            }
+        }
+    }
+
+    /**
+     * 生成当日唯一调拨单号，与 {@link CodeGenerator#generateTransferOrderNo()} 格式一致。
+     */
+    private String allocateTransferOrderNo() {
+        String dateStr = LocalDate.now().format(ORDER_NO_DATE);
+        String prefix = CodeGenerator.TRANSFER_PREFIX + dateStr;
+        String maxNo = inventoryTransferMapper.selectMaxOrderNoByDatePrefix(prefix);
+        int nextSeq = 1;
+        if (maxNo != null && maxNo.length() >= prefix.length() + 4) {
+            try {
+                String tail = maxNo.substring(maxNo.length() - 4);
+                nextSeq = Integer.parseInt(tail) + 1;
+            } catch (NumberFormatException ignored) {
+                nextSeq = 1;
+            }
+        }
+        if (nextSeq < 1 || nextSeq > 9999) {
+            throw new BusinessException("当日调拨单序号已用尽，请联系管理员");
+        }
+        return prefix + String.format("%04d", nextSeq);
+    }
+
+    /**
+     * 生成当日唯一入库单号，与 {@link CodeGenerator#generateInboundOrderNo()} 格式一致。
+     */
+    private String allocateInboundRecordOrderNo() {
+        String dateStr = LocalDate.now().format(ORDER_NO_DATE);
+        String prefix = CodeGenerator.INBOUND_PREFIX + dateStr;
+        String maxNo = inboundRecordMapper.selectMaxOrderNoByDatePrefix(prefix);
+        int nextSeq = 1;
+        if (maxNo != null && maxNo.length() >= prefix.length() + 4) {
+            try {
+                String tail = maxNo.substring(maxNo.length() - 4);
+                nextSeq = Integer.parseInt(tail) + 1;
+            } catch (NumberFormatException ignored) {
+                nextSeq = 1;
+            }
+        }
+        if (nextSeq < 1 || nextSeq > 9999) {
+            throw new BusinessException("当日入库单序号已用尽，请联系管理员");
+        }
+        return prefix + String.format("%04d", nextSeq);
+    }
+
+    /**
+     * 生成当日唯一出库单号，与 {@link CodeGenerator#generateOutboundOrderNo()} 格式一致。
+     */
+    private String allocateOutboundRecordOrderNo() {
+        String dateStr = LocalDate.now().format(ORDER_NO_DATE);
+        String prefix = CodeGenerator.OUTBOUND_PREFIX + dateStr;
+        String maxNo = outboundRecordMapper.selectMaxOrderNoByDatePrefix(prefix);
+        int nextSeq = 1;
+        if (maxNo != null && maxNo.length() >= prefix.length() + 4) {
+            try {
+                String tail = maxNo.substring(maxNo.length() - 4);
+                nextSeq = Integer.parseInt(tail) + 1;
+            } catch (NumberFormatException ignored) {
+                nextSeq = 1;
+            }
+        }
+        if (nextSeq < 1 || nextSeq > 9999) {
+            throw new BusinessException("当日出库单序号已用尽，请联系管理员");
+        }
+        return prefix + String.format("%04d", nextSeq);
+    }
+
+    private void insertInboundRecordWithAllocatedOrderNo(InboundRecord record) {
+        for (int attempt = 0; attempt < MAX_ORDER_NO_ALLOC_ATTEMPTS; attempt++) {
+            record.setOrderNo(allocateInboundRecordOrderNo());
+            try {
+                inboundRecordMapper.insert(record);
+                return;
+            } catch (DuplicateKeyException e) {
+                log.warn("入库单号冲突，重新分配 attempt={} orderNo={}", attempt + 1, record.getOrderNo());
+                if (attempt == MAX_ORDER_NO_ALLOC_ATTEMPTS - 1) {
+                    throw new BusinessException("入库单号生成失败，请稍后重试");
+                }
+            }
+        }
+    }
+
+    private void insertOutboundRecordWithAllocatedOrderNo(OutboundRecord record) {
+        for (int attempt = 0; attempt < MAX_ORDER_NO_ALLOC_ATTEMPTS; attempt++) {
+            record.setOrderNo(allocateOutboundRecordOrderNo());
+            try {
+                outboundRecordMapper.insert(record);
+                return;
+            } catch (DuplicateKeyException e) {
+                log.warn("出库单号冲突，重新分配 attempt={} orderNo={}", attempt + 1, record.getOrderNo());
+                if (attempt == MAX_ORDER_NO_ALLOC_ATTEMPTS - 1) {
+                    throw new BusinessException("出库单号生成失败，请稍后重试");
+                }
+            }
+        }
     }
 
     @Override
@@ -223,14 +332,22 @@ public class InventoryServiceImpl implements InventoryService {
             Product product = productMapper.selectById(transfer.getProductId());
             toInventory = new Inventory();
             toInventory.setProductId(transfer.getProductId());
-            toInventory.setSku(product.getCode());
+            // 库存 sku 全局唯一，须按商品+仓库生成，不可复用商品编码（否则与源仓等记录冲突）
+            toInventory.setSku(CodeGenerator.generateSku(transfer.getProductId(), transfer.getToWarehouseId()));
             toInventory.setProductName(product.getName());
+            toInventory.setSpec(product.getSpec());
+            toInventory.setCategory(product.getCategoryName());
             toInventory.setWarehouseId(transfer.getToWarehouseId());
             toInventory.setWarehouseName(toWarehouse.getName());
             toInventory.setStock(transfer.getQuantity());
             toInventory.setSafeStock(10);
+            toInventory.setCostPrice(product.getCostPrice());
+            if (product.getCostPrice() != null) {
+                toInventory.setStockValue(product.getCostPrice().multiply(new BigDecimal(transfer.getQuantity())));
+            }
             toInventory.setStatus("normal");
             toInventory.setLastInboundTime(LocalDateTime.now());
+            updateStockStatus(toInventory);
             inventoryMapper.insert(toInventory);
             inventoryEmbeddingSyncService.indexInventoryRow(toInventory);
         } else {
@@ -417,7 +534,6 @@ public class InventoryServiceImpl implements InventoryService {
 
         // 创建入库记录
         InboundRecord record = new InboundRecord();
-        record.setOrderNo(CodeGenerator.generateInboundOrderNo());
         record.setProductId(inventory.getProductId());
         record.setProductName(inventory.getProductName());
         record.setSku(inventory.getSku());
@@ -440,7 +556,7 @@ public class InventoryServiceImpl implements InventoryService {
             }
         }
 
-        inboundRecordMapper.insert(record);
+        insertInboundRecordWithAllocatedOrderNo(record);
 
         // 增加库存
         int currentStock = inventory.getStock() != null ? inventory.getStock() : 0;
@@ -472,7 +588,6 @@ public class InventoryServiceImpl implements InventoryService {
 
         // 创建出库记录
         OutboundRecord record = new OutboundRecord();
-        record.setOrderNo(CodeGenerator.generateOutboundOrderNo());
         record.setProductId(inventory.getProductId());
         record.setProductName(inventory.getProductName());
         record.setSku(inventory.getSku());
@@ -496,7 +611,7 @@ public class InventoryServiceImpl implements InventoryService {
             }
         }
 
-        outboundRecordMapper.insert(record);
+        insertOutboundRecordWithAllocatedOrderNo(record);
 
         // 减少库存
         inventory.setStock(currentStock - quantity);
@@ -531,7 +646,6 @@ public class InventoryServiceImpl implements InventoryService {
 
         // 创建入库记录
         InboundRecord record = new InboundRecord();
-        record.setOrderNo(CodeGenerator.generateInboundOrderNo());
         record.setProductId(product.getId());
         record.setProductName(product.getName());
         record.setSku(product.getCode());
@@ -554,7 +668,7 @@ public class InventoryServiceImpl implements InventoryService {
             }
         }
 
-        inboundRecordMapper.insert(record);
+        insertInboundRecordWithAllocatedOrderNo(record);
 
         // 查询是否已存在该商品在该仓库的库存记录
         LambdaQueryWrapper<Inventory> queryWrapper = new LambdaQueryWrapper<>();

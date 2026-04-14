@@ -212,4 +212,14 @@ public class WarehouseServiceImpl implements WarehouseService {
         return warehouses;
     }
 
+    @Override
+    public List<Warehouse> listOptions() {
+        LambdaQueryWrapper<Warehouse> queryWrapper = new LambdaQueryWrapper<>();
+        queryWrapper.eq(Warehouse::getDeleted, 0);
+        queryWrapper.eq(Warehouse::getStatus, 1);
+        queryWrapper.orderByAsc(Warehouse::getName);
+        queryWrapper.select(Warehouse::getId, Warehouse::getName, Warehouse::getCode);
+        return warehouseMapper.selectList(queryWrapper);
+    }
+
 }

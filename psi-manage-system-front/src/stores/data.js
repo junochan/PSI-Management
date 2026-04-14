@@ -1,6 +1,7 @@
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
 import { productApi, supplierApi, supplierIndustryApi, customerApi, warehouseApi, purchaseApi, salesApi, inventoryApi, aftersalesApi, userApi, operationLogApi, categoryApi } from '@/api'
+import { useUserStore } from '@/stores/user'
 
 export const useDataStore = defineStore('data', () => {
   // 商品数据 - 从后端获取
@@ -124,12 +125,20 @@ export const useDataStore = defineStore('data', () => {
     }
   }
 
-  // 加载仓库列表
+  // 加载仓库列表（仅「库存菜单」或 inventory:warehouse 拉完整统计；否则下拉 options）
   const loadWarehouses = async () => {
     warehousesLoading.value = true
     try {
-      const res = await warehouseApi.list({ page: 1, size: 100 })
-      warehouses.value = res.list || []
+      const userStore = useUserStore()
+      const fullList =
+        userStore.hasPermission('inventory') || userStore.hasPermission('inventory:warehouse')
+      if (fullList) {
+        const res = await warehouseApi.list({ page: 1, size: 100 })
+        warehouses.value = res.list || []
+      } else {
+        const list = await warehouseApi.options()
+        warehouses.value = Array.isArray(list) ? list : []
+      }
     } catch (error) {
       console.error('加载仓库失败:', error)
       warehouses.value = []
