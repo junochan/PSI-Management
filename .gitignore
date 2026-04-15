@@ -39,6 +39,10 @@ psi-manage-system-backend/data/uploads/
 # Deploy runtime (scripts/deploy-linux.sh)
 scripts/.deploy/
 
+# Docker Compose 本地数据与密钥
+deploy-data/
+scripts/docker-compose.env
+
 # Tooling / local agent state
 .claude/
 .playwright-mcp/

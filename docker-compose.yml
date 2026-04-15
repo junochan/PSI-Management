@@ -1,0 +1,61 @@
+# PSI-Management：后端 + MySQL（可选自建库时可只起 backend 并改 DB_HOST）
+# 使用前先打包后端 jar：cd psi-manage-system-backend && mvn -DskipTests package
+#
+# 配置：复制 docker-compose.env.example 为 docker-compose.env，再执行 scripts/docker-compose-deploy.sh
+# 或：docker compose --env-file docker-compose.env up -d
+
+services:
+  mysql:
+    image: mysql:8.0
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-root}
+      MYSQL_DATABASE: ${MYSQL_DATABASE:-smart_ims}
+    ports:
+      - "${MYSQL_PORT:-3306}:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+    command: --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -uroot -p\"$$MYSQL_ROOT_PASSWORD\" || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 40s
+
+  backend:
+    build:
+      context: ./psi-manage-system-backend
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    init: true
+    ports:
+      - "${BACKEND_PORT:-8080}:8080"
+    environment:
+      SPRING_PROFILES_ACTIVE: ${SPRING_PROFILES_ACTIVE:-prod}
+      SERVER_PORT: 8080
+      DB_HOST: ${DB_HOST:-mysql}
+      DB_PORT: ${DB_PORT:-3306}
+      DB_USERNAME: ${DB_USERNAME:-root}
+      DB_PASSWORD: ${DB_PASSWORD:-root}
+      # 覆盖各 profile 内写死的 jdbc url，使容器内连 compose 的 mysql 服务
+      SPRING_DATASOURCE_URL: jdbc:mysql://${DB_HOST:-mysql}:${DB_PORT:-3306}/${MYSQL_DATABASE:-smart_ims}?useUnicode=true&characterEncoding=utf-8&useSSL=false&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true
+      SPRING_DATASOURCE_USERNAME: ${DB_USERNAME:-root}
+      SPRING_DATASOURCE_PASSWORD: ${DB_PASSWORD:-root}
+      JWT_SECRET: ${JWT_SECRET:-change-me-in-production-min-32-characters-long!!}
+      DASHSCOPE_API_KEY: ${DASHSCOPE_API_KEY:-}
+      JAVA_OPTS: ${JAVA_OPTS:--Xms256m -Xmx1024m}
+      JAR_FILE: ${JAR_FILE:-psi-manage-system-backend-1.0.0.jar}
+      APP_ATTACHMENT_DIR: /app/data
+      APP_EMBEDDING_STORE_DIR: /app/data/image-embeddings
+    volumes:
+      # 持久化附件、向量缓存、日志（与 application.yml 中 app.attachment-dir / embedding-store-dir 一致）
+      - ${DATA_DIR:-./deploy-data/data}:/app/data
+      # 宿主 Maven 打包目录，挂载为容器内可执行 jar 所在目录
+      - ${JAR_DIR:-./psi-manage-system-backend/target}:/app/packages
+    depends_on:
+      mysql:
+        condition: service_healthy
+
+volumes:
+  mysql_data: {}
