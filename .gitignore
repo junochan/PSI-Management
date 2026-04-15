@@ -25,6 +25,7 @@ scripts/deploy.env
 .env.local
 .env.*.local
 **/application-local.yml
+**/application-pro.yml
 
 # Frontend (Vite)
 psi-manage-system-front/node_modules/
