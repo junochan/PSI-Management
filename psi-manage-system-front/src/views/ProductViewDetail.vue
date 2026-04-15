@@ -13,7 +13,13 @@
 
       <!-- 商品图片展示 -->
       <div class="product-image-wrapper">
-        <img v-if="product?.image" :src="product.image" class="product-image" />
+        <el-carousel v-if="productImages.length" height="220px" indicator-position="outside" :autoplay="false">
+          <el-carousel-item v-for="(url, i) in productImages" :key="i">
+            <div class="carousel-img-wrap">
+              <img :src="url" class="product-image" alt="" />
+            </div>
+          </el-carousel-item>
+        </el-carousel>
         <div v-else class="product-image-placeholder">
           <span class="placeholder-icon">{{ getProductIcon(product?.categoryName || product?.category) }}</span>
         </div>
@@ -47,6 +53,7 @@ import { useRouter, useRoute } from 'vue-router'
 import { useDataStore } from '@/stores/data'
 import { useUserStore } from '@/stores/user'
 import { formatTime } from '@/utils/time'
+import { parseProductImageUrls } from '@/utils/productImages'
 
 const router = useRouter()
 const route = useRoute()
@@ -57,6 +64,8 @@ const canProductEdit = computed(() => userStore.hasPermission('product:edit'))
 
 const productId = computed(() => route.params.id)
 const product = ref(null)
+
+const productImages = computed(() => parseProductImageUrls(product.value?.image))
 
 // 获取商品图标
 const getProductIcon = (category) => {
@@ -113,11 +122,23 @@ onMounted(() => {
   .product-image-wrapper {
     text-align: center;
     margin-bottom: 24px;
+    max-width: 360px;
+    margin-left: auto;
+    margin-right: auto;
+
+    .carousel-img-wrap {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      height: 220px;
+    }
 
     .product-image {
-      width: 200px;
-      height: 200px;
-      object-fit: cover;
+      max-width: 100%;
+      max-height: 220px;
+      width: auto;
+      height: auto;
+      object-fit: contain;
       border-radius: 12px;
       border: 1px solid #E4E7ED;
     }

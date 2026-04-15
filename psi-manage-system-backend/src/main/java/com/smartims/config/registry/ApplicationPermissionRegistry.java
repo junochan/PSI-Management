@@ -74,6 +74,10 @@ public class ApplicationPermissionRegistry {
         addRule("/v1/products", Set.of("GET", "HEAD"), READ_PRODUCT_OR_CATEGORY);
         addRule("/v1/categories", Set.of("GET", "HEAD"), READ_PRODUCT_OR_CATEGORY);
 
+        // 商品 Excel 异步导入（须在泛化 /v1/products/** GET 之前，仅允许 product:add 查询任务进度）
+        addRule("/v1/products/import", Set.of("POST"), List.of("product:add"));
+        addRule("/v1/products/import/**", Set.of("GET", "HEAD"), List.of("product:add"));
+
         // 商品：读接口允许采购/销售/库存岗只读；写接口仅认操作码 product:*（不再用菜单码 products 放行写操作）
         addRule("/v1/products/**", Set.of("GET", "HEAD"), READ_PRODUCT_OR_CATEGORY);
         // 以图搜图：POST 但属查询，与读权限一致（须在泛化 POST 之前匹配）

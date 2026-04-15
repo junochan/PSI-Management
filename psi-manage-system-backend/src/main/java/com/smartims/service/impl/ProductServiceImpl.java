@@ -12,12 +12,15 @@ import com.smartims.embedding.ImageVectorSearchHelper;
 import com.smartims.embedding.ProductImageEmbeddingIndexer;
 import com.smartims.entity.Inventory;
 import com.smartims.entity.Product;
+import com.smartims.entity.SysCategory;
 import com.smartims.entity.Warehouse;
 import com.smartims.exception.BusinessException;
 import com.smartims.mapper.InventoryMapper;
 import com.smartims.mapper.ProductMapper;
+import com.smartims.mapper.SysCategoryMapper;
 import com.smartims.mapper.WarehouseMapper;
 import com.smartims.service.InventoryEmbeddingSyncService;
+import com.smartims.service.ProductImageLoader;
 import com.smartims.service.ProductImageStorageService;
 import com.smartims.service.ProductService;
 import com.smartims.util.CodeGenerator;
@@ -33,8 +36,10 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Objects;
+import java.util.Set;
 
 /**
  * 商品服务实现类
@@ -47,15 +52,19 @@ import java.util.Objects;
 @RequiredArgsConstructor
 public class ProductServiceImpl implements ProductService {
 
+    private static final int MAX_PRODUCT_IMAGES = 10;
+
     private static final int IMAGE_SEARCH_MAX_ROWS = 5000;
 
     private static final DateTimeFormatter PRODUCT_CODE_DATE = DateTimeFormatter.ofPattern("yyMMdd");
 
     private final ProductMapper productMapper;
+    private final SysCategoryMapper sysCategoryMapper;
     private final InventoryMapper inventoryMapper;
     private final WarehouseMapper warehouseMapper;
     private final InventoryEmbeddingSyncService inventoryEmbeddingSyncService;
     private final ProductImageStorageService productImageStorageService;
+    private final ProductImageLoader productImageLoader;
     private final DashScopeMultimodalEmbeddingService dashScopeMultimodalEmbeddingService;
     private final ImageVectorSearchHelper imageVectorSearchHelper;
 
@@ -65,6 +74,82 @@ public class ProductServiceImpl implements ProductService {
         }
         if (image.trim().startsWith("data:")) {
             throw new BusinessException("请先上传图片，数据库仅保存图片访问地址");
+        }
+    }
+
+    /**
+     * 校验图片字段：禁止 data URL；若有内容则解析为 1～{@link #MAX_PRODUCT_IMAGES} 条 URL（导入允许整段为空）。
+     */
+    private void validateProductImagesField(String image) {
+        validateProductImageField(image);
+        if (!StringUtils.hasText(image)) {
+            return;
+        }
+        List<String> urls = productImageLoader.allImageStrings(image);
+        if (urls.isEmpty()) {
+            throw new BusinessException("商品图片格式无效");
+        }
+        if (urls.size() > MAX_PRODUCT_IMAGES) {
+            throw new BusinessException("商品图片最多 " + MAX_PRODUCT_IMAGES + " 张");
+        }
+    }
+
+    private void deleteRemovedProductImages(String previous, String current) {
+        List<String> prev = productImageLoader.allImageStrings(previous);
+        Set<String> cur = new HashSet<>(productImageLoader.allImageStrings(current));
+        for (String u : prev) {
+            if (!cur.contains(u)) {
+                productImageStorageService.deleteManagedImageIfPresent(u);
+            }
+        }
+    }
+
+    private void deleteAllProductImagesInField(String productImagesField) {
+        for (String u : productImageLoader.allImageStrings(productImagesField)) {
+            productImageStorageService.deleteManagedImageIfPresent(u);
+        }
+    }
+
+    /**
+     * 新建商品时解析分类：优先 DTO 中的 categoryId；否则按分类名称查库；再无则默认 1。
+     */
+    private Long resolveCategoryIdForCreate(ProductDTO dto) {
+        if (dto.getCategoryId() != null) {
+            return dto.getCategoryId();
+        }
+        if (StringUtils.hasText(dto.getCategoryName())) {
+            LambdaQueryWrapper<SysCategory> w = new LambdaQueryWrapper<>();
+            w.eq(SysCategory::getName, dto.getCategoryName().trim());
+            w.eq(SysCategory::getDeleted, 0);
+            SysCategory cat = sysCategoryMapper.selectOne(w);
+            if (cat == null) {
+                throw new BusinessException("商品分类不存在：「" + dto.getCategoryName().trim() + "」");
+            }
+            return cat.getId();
+        }
+        return 1L;
+    }
+
+    /**
+     * 插入商品：若 DTO 指定了商品编码则校验唯一后使用（用于 Excel 导入）；否则按日序号自动生成。
+     */
+    private void insertNewProductWithOptionalCode(Product product, ProductDTO dto) {
+        if (StringUtils.hasText(dto.getCode())) {
+            String c = dto.getCode().trim();
+            LambdaQueryWrapper<Product> qw = new LambdaQueryWrapper<>();
+            qw.eq(Product::getCode, c);
+            qw.eq(Product::getDeleted, 0);
+            if (productMapper.selectCount(qw) > 0) {
+                throw new BusinessException("商品编码已存在：" + c);
+            }
+            product.setCode(c);
+            try {
+                productMapper.insert(product);
+            } catch (DuplicateKeyException e) {
+                throw new BusinessException("商品编码已存在：" + c);
+            }
+        } else {
+            insertProductWithAllocatedCode(product);
         }
     }
 
@@ -178,13 +263,15 @@ public class ProductServiceImpl implements ProductService {
     @Override
     @Transactional(rollbackFor = Exception.class)
     public void addProduct(ProductDTO dto) {
-        validateProductImageField(dto.getImage());
+        validateProductImagesField(dto.getImage());
+
+        Long categoryId = resolveCategoryIdForCreate(dto);
 
         Product product = new Product();
         product.setName(dto.getName());
         product.setBrand(dto.getBrand());
         product.setSpec(dto.getSpec());
-        product.setCategoryId(dto.getCategoryId() != null ? dto.getCategoryId() : 1L);
+        product.setCategoryId(categoryId);
         product.setCategoryName(dto.getCategoryName());
         product.setCostPrice(dto.getCostPrice());
         product.setSalePrice(dto.getSalePrice());
@@ -194,7 +281,7 @@ public class ProductServiceImpl implements ProductService {
         product.setStock(dto.getInitialStock() != null ? dto.getInitialStock() : 0);
         product.setSafeStock(dto.getSafeStock() != null ? dto.getSafeStock() : 10);
 
-        insertProductWithAllocatedCode(product);
+        insertNewProductWithOptionalCode(product, dto);
         log.info("添加商品成功：id={}, name={}", product.getId(), product.getName());
 
         // 同步创建库存记录（如果指定了初始库存和仓库）
@@ -270,7 +357,7 @@ public class ProductServiceImpl implements ProductService {
 
     @Override
     public void updateProduct(Long id, ProductDTO dto) {
-        validateProductImageField(dto.getImage());
+        validateProductImagesField(dto.getImage());
 
         Product existing = getProductById(id);
         String previousImage = existing.getImage();
@@ -322,7 +409,7 @@ public class ProductServiceImpl implements ProductService {
         log.info("同步更新库存表商品信息：productId={}, updatedCount={}", id, inventories.size());
 
         if (!Objects.equals(previousImage, existing.getImage())) {
-            productImageStorageService.deleteManagedImageIfPresent(previousImage);
+            deleteRemovedProductImages(previousImage, existing.getImage());
             inventoryEmbeddingSyncService.reindexAllByProductId(id);
         }
     }
@@ -341,7 +428,7 @@ public class ProductServiceImpl implements ProductService {
             throw new BusinessException("该商品存在库存记录，无法删除。请先清理库存后再删除商品。");
         }
 
-        productImageStorageService.deleteManagedImageIfPresent(product.getImage());
+        deleteAllProductImagesInField(product.getImage());
         productMapper.deleteById(id);
         log.info("删除商品成功：id={}, name={}", id, product.getName());
     }
@@ -368,7 +455,7 @@ public class ProductServiceImpl implements ProductService {
         for (Long id : ids) {
             Product p = productMapper.selectById(id);
             if (p != null) {
-                productImageStorageService.deleteManagedImageIfPresent(p.getImage());
+                deleteAllProductImagesInField(p.getImage());
             }
         }
         productMapper.deleteBatchIds(ids);

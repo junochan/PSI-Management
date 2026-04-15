@@ -63,7 +63,7 @@
         <el-table-column label="图片" width="76" align="center" fixed="left">
           <template #default="{ row }">
             <div class="product-image-cell">
-              <img v-if="row.image" :src="row.image" alt="商品图片" class="product-thumb-list" />
+              <img v-if="firstProductImageUrl(row.image)" :src="firstProductImageUrl(row.image)" alt="商品图片" class="product-thumb-list" />
               <span v-else class="product-icon-placeholder">{{ getProductIcon(row.categoryName || row.category) }}</span>
             </div>
           </template>
@@ -134,20 +134,27 @@
       destroy-on-close
     >
       <el-form ref="productFormRef" :model="productForm" :rules="productRules" label-width="100px">
-        <el-form-item label="商品图片" prop="image">
-          <el-upload
-            class="product-image-uploader"
-            action="#"
-            :auto-upload="false"
-            :show-file-list="false"
-            :on-change="handleImageChange"
-            accept="image/*"
-          >
-            <img v-if="productForm.image" :src="productForm.image" class="product-image" alt="" />
-            <el-icon v-else-if="!imageUploading" class="product-image-uploader-icon"><Plus /></el-icon>
-            <el-icon v-else class="product-image-uploader-icon is-loading"><Loading /></el-icon>
-          </el-upload>
-          <div class="image-tip">支持 JPG、PNG、GIF、WEBP，建议 200×200；选择后自动上传至服务器</div>
+        <el-form-item label="商品图片" prop="imageList">
+          <div class="product-images-editor">
+            <div v-for="(url, index) in productForm.imageList" :key="url + '-' + index" class="product-image-tile">
+              <img :src="url" alt="" class="product-image" />
+              <el-button type="danger" link size="small" class="remove-img-btn" @click="removeProductImage(index)">移除</el-button>
+            </div>
+            <el-upload
+              v-if="productForm.imageList.length < 10"
+              class="product-image-uploader"
+              action="#"
+              :auto-upload="false"
+              :show-file-list="false"
+              :disabled="imageUploading"
+              :on-change="handleImageChange"
+              accept="image/*"
+            >
+              <el-icon v-if="!imageUploading" class="product-image-uploader-icon"><Plus /></el-icon>
+              <el-icon v-else class="product-image-uploader-icon is-loading"><Loading /></el-icon>
+            </el-upload>
+          </div>
+          <div class="image-tip">最多 10 张；支持 JPG、PNG、GIF、WEBP；选择后自动上传至服务器</div>
         </el-form-item>
         <el-form-item label="商品名称" prop="name">
           <el-input v-model="productForm.name" placeholder="输入商品名称" />
@@ -205,7 +212,15 @@
     <!-- 商品详情对话框 -->
     <el-dialog v-model="productDetailVisible" title="商品详情" width="500px">
       <div class="product-detail-image-wrapper">
-        <img v-if="currentProduct?.image" :src="currentProduct.image" alt="商品图片" class="product-detail-thumb" />
+        <div v-if="currentProductDetailImages.length" class="product-detail-images-row">
+          <img
+            v-for="(u, i) in currentProductDetailImages"
+            :key="i"
+            :src="u"
+            alt="商品图片"
+            class="product-detail-thumb"
+          />
+        </div>
         <span v-else class="product-detail-placeholder">{{ getProductIcon(currentProduct?.categoryName || currentProduct?.category) }}</span>
       </div>
       <el-descriptions :column="2" border>
@@ -227,13 +242,20 @@
     </el-dialog>
 
     <!-- 批量导入对话框 -->
-    <el-dialog v-model="importDialogVisible" title="批量导入商品" width="500px">
+    <el-dialog v-model="importDialogVisible" title="批量导入商品" width="560px">
+      <div class="import-template-bar">
+        <el-button type="primary" @click="downloadProductImportTemplate">
+          <el-icon><Download /></el-icon>
+          下载导入模板
+        </el-button>
+        <span class="import-template-hint">请使用模板表头填写，勿改列名；详见模板内「填写说明」工作表</span>
+      </div>
       <el-upload
         drag
         action="#"
         :auto-upload="false"
         :on-change="handleFileChange"
-        accept=".xlsx,.xls,.csv"
+        accept=".xlsx,.xls"
       >
         <el-icon class="el-icon--upload"><UploadFilled /></el-icon>
         <div class="el-upload__text">
@@ -241,13 +263,13 @@
         </div>
         <template #tip>
           <div class="el-upload__tip">
-            只能上传 xlsx/xls/csv 文件，且文件大小不超过 10MB
+            请上传 xlsx / xls，服务端异步解析导入；单文件不超过 10MB
           </div>
         </template>
       </el-upload>
       <template #footer>
-        <el-button @click="importDialogVisible = false">取消</el-button>
-        <el-button type="primary" @click="executeImport">开始导入</el-button>
+        <el-button :disabled="importLoading" @click="importDialogVisible = false">取消</el-button>
+        <el-button type="primary" :loading="importLoading" @click="executeImport">开始导入</el-button>
       </template>
     </el-dialog>
   </div>
@@ -261,6 +283,7 @@ import { useDataStore } from '@/stores/data'
 import { useUserStore } from '@/stores/user'
 import { productApi } from '@/api'
 import * as XLSX from 'xlsx'
+import { parseProductImageUrls, firstProductImageUrl, encodeProductImagesForApi } from '@/utils/productImages'
 
 const router = useRouter()
 const dataStore = useDataStore()
@@ -296,10 +319,13 @@ const editMode = ref(false)
 const productFormRef = ref()
 const currentProduct = ref(null)
 const uploadFile = ref(null)
+const importLoading = ref(false)
 const loading = ref(false)
 const imageUploading = ref(false)
 
 const categoriesList = computed(() => dataStore.categories || [])
+
+const currentProductDetailImages = computed(() => parseProductImageUrls(currentProduct.value?.image))
 
 /** 服务端分页：当前页数据 */
 const productTableRows = ref([])
@@ -440,11 +466,20 @@ const productForm = ref({
   salePrice: 0,
   description: '',
   status: '在售',
-  image: ''
+  imageList: []
 })
 
 const productRules = {
-  image: [{ required: true, message: '请上传商品图片', trigger: 'change' }],
+  imageList: [
+    {
+      validator: (_, v, cb) => {
+        if (!v?.length) cb(new Error('请至少上传 1 张商品图片'))
+        else if (v.length > 10) cb(new Error('商品图片最多 10 张'))
+        else cb()
+      },
+      trigger: 'change'
+    }
+  ],
   name: [{ required: true, message: '请输入商品名称', trigger: 'blur' }],
   categoryName: [{ required: true, message: '请选择商品分类', trigger: 'change' }],
   costPrice: [{ required: true, message: '请输入成本价', trigger: 'blur' }],
@@ -501,7 +536,7 @@ const openAddDialog = () => {
     description: '',
     status: '在售',
     code: '',
-    image: ''
+    imageList: []
   }
   productDialogVisible.value = true
 }
@@ -510,18 +545,30 @@ const openAddDialog = () => {
 const handleImageChange = async (file) => {
   const raw = file?.raw
   if (!raw) return
+  if (productForm.value.imageList.length >= 10) {
+    ElMessage.warning('商品图片最多 10 张')
+    return
+  }
   imageUploading.value = true
   try {
     const formData = new FormData()
     formData.append('file', raw)
     const data = await productApi.uploadImage(formData)
-    productForm.value.image = data?.url || ''
-    productFormRef.value?.validateField('image')
+    const url = data?.url || ''
+    if (url) {
+      productForm.value.imageList = [...productForm.value.imageList, url]
+    }
+    productFormRef.value?.validateField('imageList')
   } catch (error) {
     ElMessage.error(error.message || '图片上传失败')
   } finally {
     imageUploading.value = false
   }
+}
+
+const removeProductImage = (index) => {
+  productForm.value.imageList = productForm.value.imageList.filter((_, i) => i !== index)
+  productFormRef.value?.validateField('imageList')
 }
 
 // 编辑商品
@@ -588,7 +635,7 @@ const submitProduct = async () => {
           costPrice: productForm.value.costPrice,
           salePrice: productForm.value.salePrice,
           status: productForm.value.status || '在售',
-          image: productForm.value.image,
+          image: encodeProductImagesForApi(productForm.value.imageList),
           description: productForm.value.description
         }
 
@@ -610,10 +657,84 @@ const submitProduct = async () => {
   })
 }
 
+/** 与后端 ProductDTO 对齐的导入模板列（首行为表头） */
+const PRODUCT_IMPORT_TEMPLATE_HEADERS = [
+  '商品编码',
+  '商品名称',
+  '分类名称',
+  '品牌',
+  '规格',
+  '成本价',
+  '销售价',
+  '状态',
+  '图片URL',
+  '商品描述',
+  '安全库存',
+  '初始库存',
+  '入库仓库ID'
+]
+
+/** 生成并下载规范 Excel 导入模板（含「填写说明」工作表） */
+const downloadProductImportTemplate = () => {
+  const wsMain = XLSX.utils.aoa_to_sheet([PRODUCT_IMPORT_TEMPLATE_HEADERS])
+  wsMain['!cols'] = [
+    { wch: 14 },
+    { wch: 22 },
+    { wch: 14 },
+    { wch: 12 },
+    { wch: 16 },
+    { wch: 10 },
+    { wch: 10 },
+    { wch: 8 },
+    { wch: 36 },
+    { wch: 28 },
+    { wch: 10 },
+    { wch: 10 },
+    { wch: 12 }
+  ]
+
+  const instructionRows = [
+    ['商品批量导入 — 填写说明'],
+    [''],
+    ['一、必填字段'],
+    ['商品名称、分类名称、成本价、销售价 为必填；其余列选填。'],
+    [''],
+    ['二、字段说明'],
+    ['商品编码：可留空，由系统在导入时生成；若填写须保证与现有数据不重复。'],
+    ['分类名称：须与「商品分类管理」中的名称完全一致。'],
+    ['成本价 / 销售价：数字，支持小数。'],
+    ['状态：填「在售」或「停售」；留空则按「在售」处理。'],
+    ['图片URL：可填可访问的图片地址；留空则导入后需在界面补传图片。'],
+    ['安全库存 / 初始库存：非负整数；初始库存、入库仓库ID 仅在新建商品且需要自动入库时填写。'],
+    ['入库仓库ID：须为系统中已存在仓库的数字 ID，可与「仓库管理」对照。'],
+    [''],
+    ['三、格式要求'],
+    ['请勿修改首行表头文字或列顺序；从第 2 行起逐行填写一条商品。'],
+    ['建议直接使用本模板保存为 .xlsx 后再填写，勿在表头行插入或合并单元格。']
+  ]
+  const wsHelp = XLSX.utils.aoa_to_sheet(instructionRows)
+  wsHelp['!cols'] = [{ wch: 88 }]
+
+  const workbook = XLSX.utils.book_new()
+  XLSX.utils.book_append_sheet(workbook, wsMain, '商品导入')
+  XLSX.utils.book_append_sheet(workbook, wsHelp, '填写说明')
+  const dateStr = new Date().toISOString().slice(0, 10)
+  XLSX.writeFile(workbook, `商品导入模板_${dateStr}.xlsx`)
+  ElMessage.success('已开始下载导入模板')
+}
+
 // 批量导入
-const handleImport = () => {
+const handleImport = async () => {
   if (!canProductAdd.value) {
     ElMessage.warning('无添加商品权限')
+    return
+  }
+  uploadFile.value = null
+  importLoading.value = false
+  try {
+    await dataStore.loadCategories()
+  } catch (e) {
+    ElMessage.error(e.message || '加载商品分类失败，请稍后重试')
     return
   }
   importDialogVisible.value = true
@@ -623,7 +744,10 @@ const handleFileChange = (file) => {
   uploadFile.value = file.raw
 }
 
-const executeImport = () => {
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
+
+/** 提交 Excel 至后端异步导入，并轮询任务状态 */
+const executeImport = async () => {
   if (!canProductAdd.value) {
     ElMessage.warning('无添加商品权限')
     return
@@ -632,8 +756,73 @@ const executeImport = () => {
     ElMessage.warning('请先选择要导入的文件')
     return
   }
-  ElMessage.success('批量导入功能演示 - 文件已接收')
-  importDialogVisible.value = false
+  const maxBytes = 10 * 1024 * 1024
+  if (uploadFile.value.size > maxBytes) {
+    ElMessage.warning('文件大小不能超过 10MB')
+    return
+  }
+
+  importLoading.value = true
+  try {
+    const formData = new FormData()
+    formData.append('file', uploadFile.value)
+    const submit = await productApi.importProducts(formData)
+    const jobId = submit?.jobId
+    if (!jobId) {
+      ElMessage.error('服务端未返回任务编号')
+      return
+    }
+
+    const maxPoll = 300
+    let task = null
+    for (let i = 0; i < maxPoll; i++) {
+      await sleep(800)
+      task = await productApi.getImportTask(jobId)
+      if (task && (task.status === 'COMPLETED' || task.status === 'FAILED')) {
+        break
+      }
+    }
+
+    if (!task) {
+      ElMessage.error('无法获取导入任务状态')
+      return
+    }
+
+    if (task.status === 'FAILED') {
+      ElMessage.error(task.message || '导入任务失败')
+      return
+    }
+
+    if (task.status !== 'COMPLETED') {
+      ElMessage.warning('导入仍在处理中，请稍后刷新商品列表查看结果')
+      return
+    }
+
+    await loadProducts()
+
+    const errs = task.errors || []
+    const detail =
+      errs.slice(0, 30).join('\n') + (errs.length > 30 ? `\n… 共 ${errs.length} 条` : '')
+
+    const sc = task.successCount ?? 0
+    const fc = task.failCount ?? 0
+
+    if (sc === 0 && fc === 0) {
+      ElMessage.warning(task.message || '没有导入任何数据行')
+    } else if (fc > 0 && detail) {
+      ElMessage.warning(task.message || '导入结束')
+      await ElMessageBox.alert(detail, '失败明细', { type: 'warning', confirmButtonText: '知道了' })
+    } else {
+      ElMessage.success(task.message || '导入完成')
+    }
+
+    importDialogVisible.value = false
+    uploadFile.value = null
+  } catch (e) {
+    ElMessage.error(e.message || '导入失败')
+  } finally {
+    importLoading.value = false
+  }
 }
 
 // 批量导出 - 按当前筛选条件拉取后导出
@@ -862,6 +1051,33 @@ onMounted(() => {
     }
   }
 
+  .product-images-editor {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
+    align-items: flex-start;
+
+    .product-image-tile {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 4px;
+
+      .product-image {
+        width: 88px;
+        height: 88px;
+        object-fit: cover;
+        border-radius: 8px;
+        border: 1px solid #e4e7ed;
+        display: block;
+      }
+
+      .remove-img-btn {
+        padding: 0;
+      }
+    }
+  }
+
   .product-image-uploader {
     .product-image {
       width: 120px;
@@ -908,6 +1124,13 @@ onMounted(() => {
     text-align: center;
     margin-bottom: 20px;
 
+    .product-detail-images-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      justify-content: center;
+    }
+
     .product-detail-thumb {
       width: 100px;
       height: 100px;
@@ -928,5 +1151,19 @@ onMounted(() => {
       font-size: 40px;
     }
   }
+}
+/* 弹层内容 teleport 到 body，须与 .products-page 平级以便 scoped 命中 */
+.import-template-bar {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 10px;
+  margin-bottom: 16px;
+}
+
+.import-template-hint {
+  font-size: 12px;
+  color: #909399;
+  line-height: 1.5;
 }
 </style>

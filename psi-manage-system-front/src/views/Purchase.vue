@@ -294,7 +294,7 @@
     </el-tabs>
 
     <!-- 新建采购单对话框 -->
-    <el-dialog v-model="purchaseDialogVisible" title="新建采购单" width="700px" destroy-on-close>
+    <el-dialog v-model="purchaseDialogVisible" title="新建采购单" width="760px" destroy-on-close>
       <el-form ref="purchaseFormRef" :model="purchaseForm" :rules="purchaseRules" label-width="100px">
         <el-row :gutter="20">
           <el-col :span="12">
@@ -354,17 +354,19 @@
           </el-col>
         </el-row>
         <el-row :gutter="20">
-          <el-col :span="8">
+          <el-col :span="12">
             <el-form-item label="待入库">
-              <el-input-number v-model="purchaseForm.pendingQuantity" :min="0" :max="purchaseForm.totalQuantity" style="width: 100%" disabled />
+              <el-input :model-value="formatQtyDisplay(purchaseForm.pendingQuantity)" disabled class="purchase-qty-readonly" />
             </el-form-item>
           </el-col>
-          <el-col :span="8">
+          <el-col :span="12">
             <el-form-item label="已入库">
-              <el-input-number v-model="purchaseForm.inboundQuantity" :min="0" :max="purchaseForm.totalQuantity" style="width: 100%" disabled />
+              <el-input :model-value="formatQtyDisplay(purchaseForm.inboundQuantity)" disabled class="purchase-qty-readonly" />
             </el-form-item>
           </el-col>
-          <el-col :span="8">
+        </el-row>
+        <el-row :gutter="20">
+          <el-col :span="24">
             <el-form-item label="采购金额">
               <el-input :value="`¥${(purchaseForm.totalQuantity * purchaseForm.price).toLocaleString()}`" disabled />
             </el-form-item>
@@ -488,6 +490,7 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import { useDataStore } from '@/stores/data'
 import { useUserStore } from '@/stores/user'
 import { productApi, purchaseApi, supplierApi, warehouseApi } from '@/api'
+import { firstProductImageUrl } from '@/utils/productImages'
 
 const router = useRouter()
 const dataStore = useDataStore()
@@ -572,6 +575,14 @@ const warehousesList = computed(() => dataStore.warehouses || [])
 const getWarehouseName = (warehouseId) => {
   const warehouse = warehousesList.value.find(w => w.id === warehouseId)
   return warehouse?.name || ''
+}
+
+/** 只读数量展示：无步进器占位，大数字用千分位，避免挤占宽度 */
+const formatQtyDisplay = (n) => {
+  if (n == null || n === '') return '—'
+  const num = Number(n)
+  if (Number.isNaN(num)) return String(n)
+  return num.toLocaleString()
 }
 
 const purchaseOrders = computed(() => dataStore.purchaseOrders || [])
@@ -824,7 +835,7 @@ const getProductIcon = (productName) => {
 // 获取商品图片
 const getProductImage = (productId) => {
   const product = productList.value.find(p => p.id === productId)
-  return product?.image || null
+  return firstProductImageUrl(product?.image)
 }
 
 // 获取商品名称（从商品列表动态获取最新名称）
@@ -1352,6 +1363,19 @@ onMounted(() => {
         margin-top: 4px;
       }
     }
+  }
+}
+
+/* 新建采购单对话框 teleport 到 body，需与 .purchase-page 平级才能命中 */
+.purchase-qty-readonly {
+  width: 100%;
+  :deep(.el-input__wrapper) {
+    justify-content: flex-end;
+  }
+  :deep(.el-input__inner) {
+    font-variant-numeric: tabular-nums;
+    text-align: right;
+    overflow-x: auto;
   }
 }
 </style>

@@ -7,23 +7,28 @@
           <el-button @click="goBack">返回</el-button>
         </div>
       </template>
-      <el-form ref="productFormRef" :model="productForm" :rules="productRules" label-width="120px" style="max-width: 600px">
-        <el-form-item label="商品图片" prop="image">
-          <div class="image-upload-wrapper">
+      <el-form ref="productFormRef" :model="productForm" :rules="productRules" label-width="120px" style="max-width: 640px">
+        <el-form-item label="商品图片" prop="imageList">
+          <div class="product-images-editor">
+            <div v-for="(url, index) in productForm.imageList" :key="url + '-' + index" class="product-image-tile">
+              <img :src="url" alt="" class="product-image" />
+              <el-button type="danger" link size="small" class="remove-img-btn" @click="removeProductImage(index)">移除</el-button>
+            </div>
             <el-upload
+              v-if="productForm.imageList.length < 10"
               class="product-image-uploader"
               action="#"
               :auto-upload="false"
               :show-file-list="false"
+              :disabled="imageUploading"
               :on-change="handleImageChange"
               accept="image/*"
             >
-              <img v-if="productForm.image" :src="productForm.image" class="product-image" alt="" />
-              <el-icon v-else-if="!imageUploading" class="product-image-uploader-icon"><Plus /></el-icon>
+              <el-icon v-if="!imageUploading" class="product-image-uploader-icon"><Plus /></el-icon>
               <el-icon v-else class="product-image-uploader-icon is-loading"><Loading /></el-icon>
             </el-upload>
-            <div class="image-tip">支持 JPG、PNG、GIF、WEBP；选择后自动上传，仅保存图片地址</div>
           </div>
+          <div class="image-tip">最多 10 张；支持 JPG、PNG、GIF、WEBP；选择后自动上传，仅保存图片地址</div>
         </el-form-item>
         <el-form-item label="商品名称" prop="name"><el-input v-model="productForm.name" placeholder="输入商品名称" /></el-form-item>
         <el-row :gutter="20">
@@ -58,6 +63,7 @@ import { ElMessage } from 'element-plus'
 import { useDataStore } from '@/stores/data'
 import { useUserStore } from '@/stores/user'
 import { productApi } from '@/api'
+import { parseProductImageUrls, encodeProductImagesForApi } from '@/utils/productImages'
 
 const router = useRouter()
 const route = useRoute()
@@ -70,9 +76,28 @@ const productId = computed(() => route.params.id)
 const editMode = computed(() => !!productId.value)
 const categoriesList = computed(() => dataStore.categories || [])
 
-const productForm = ref({ name: '', categoryName: '', brand: '', spec: '', costPrice: 0, salePrice: 0, status: '在售', description: '', image: '' })
+const productForm = ref({
+  name: '',
+  categoryName: '',
+  brand: '',
+  spec: '',
+  costPrice: 0,
+  salePrice: 0,
+  status: '在售',
+  description: '',
+  imageList: []
+})
 const productRules = {
-  image: [{ required: true, message: '请上传商品图片', trigger: 'change' }],
+  imageList: [
+    {
+      validator: (_, v, cb) => {
+        if (!v?.length) cb(new Error('请至少上传 1 张商品图片'))
+        else if (v.length > 10) cb(new Error('商品图片最多 10 张'))
+        else cb()
+      },
+      trigger: 'change'
+    }
+  ],
   name: [{ required: true, message: '请输入商品名称', trigger: 'blur' }],
   categoryName: [{ required: true, message: '请选择商品分类', trigger: 'change' }],
   costPrice: [{ required: true, message: '请输入成本价', trigger: 'blur' }],
@@ -82,18 +107,30 @@ const productRules = {
 const handleImageChange = async (file) => {
   const raw = file?.raw
   if (!raw) return
+  if (productForm.value.imageList.length >= 10) {
+    ElMessage.warning('商品图片最多 10 张')
+    return
+  }
   imageUploading.value = true
   try {
     const formData = new FormData()
     formData.append('file', raw)
     const data = await productApi.uploadImage(formData)
-    productForm.value.image = data?.url || ''
-    productFormRef.value?.validateField('image')
+    const url = data?.url || ''
+    if (url) {
+      productForm.value.imageList = [...productForm.value.imageList, url]
+    }
+    productFormRef.value?.validateField('imageList')
   } catch (error) {
     ElMessage.error(error.message || '图片上传失败')
   } finally {
     imageUploading.value = false
   }
+}
+
+const removeProductImage = (index) => {
+  productForm.value.imageList = productForm.value.imageList.filter((_, i) => i !== index)
+  productFormRef.value?.validateField('imageList')
 }
 
 onMounted(async () => {
@@ -121,7 +158,7 @@ onMounted(async () => {
         salePrice: product.salePrice,
         status: product.status || '在售',
         description: product.description || '',
-        image: product.image || '',
+        imageList: parseProductImageUrls(product.image),
         code: product.code
       }
     }
@@ -134,7 +171,6 @@ const submitProduct = async () => {
   await productFormRef.value.validate(async (valid) => {
     if (valid) {
       try {
-        // 构造后端需要的DTO格式
         const category = categoriesList.value.find(c => c.name === productForm.value.categoryName)
         const productDTO = {
           code: productForm.value.code || `P${Date.now()}`,
@@ -146,7 +182,7 @@ const submitProduct = async () => {
           costPrice: productForm.value.costPrice,
           salePrice: productForm.value.salePrice,
           status: productForm.value.status || '在售',
-          image: productForm.value.image,
+          image: encodeProductImagesForApi(productForm.value.imageList),
           description: productForm.value.description
         }
 
@@ -179,11 +215,31 @@ const submitProduct = async () => {
     }
   }
 
-  .image-upload-wrapper {
+  .product-images-editor {
     display: flex;
-    flex-direction: column;
+    flex-wrap: wrap;
+    gap: 12px;
     align-items: flex-start;
-    gap: 8px;
+
+    .product-image-tile {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 4px;
+
+      .product-image {
+        width: 88px;
+        height: 88px;
+        object-fit: cover;
+        border-radius: 8px;
+        border: 1px solid #e4e7ed;
+        display: block;
+      }
+
+      .remove-img-btn {
+        padding: 0;
+      }
+    }
   }
 
   .product-image-uploader {

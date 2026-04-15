@@ -99,6 +99,7 @@ import { useRouter, useRoute } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { useDataStore } from '@/stores/data'
 import { purchaseApi } from '@/api'
+import { firstProductImageUrl } from '@/utils/productImages'
 
 const router = useRouter()
 const route = useRoute()
@@ -137,7 +138,7 @@ const products = computed(() => dataStore.products || [])
 const selectedProductImage = computed(() => {
   if (!orderForm.value.productId) return null
   const product = products.value.find(p => p.id === orderForm.value.productId)
-  return product?.image || null
+  return firstProductImageUrl(product?.image)
 })
 
 // 状态格式化函数 - 英文转中文

@@ -933,6 +933,7 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import { useDataStore } from '@/stores/data'
 import { useUserStore } from '@/stores/user'
 import { inventoryApi, warehouseApi, purchaseApi, salesApi } from '@/api'
+import { firstProductImageUrl } from '@/utils/productImages'
 
 const router = useRouter()
 const route = useRoute()
@@ -1631,7 +1632,7 @@ const getCategoryIcon = (cat) => ({ '手机': '📱', '电脑': '💻', '配件'
 // 获取商品图片
 const getProductImage = (productId) => {
   const product = products.value.find(p => p.id === productId)
-  return product?.image || null
+  return firstProductImageUrl(product?.image)
 }
 
 // 动态获取仓库名称 - 从仓库列表中根据warehouseId查找

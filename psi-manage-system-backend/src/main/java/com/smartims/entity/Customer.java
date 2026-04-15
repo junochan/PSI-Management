@@ -44,6 +44,9 @@ public class Customer implements Serializable {
 
     private BigDecimal totalAmount;
 
+    /** 最近有效销售单下单时间（不含已取消订单），与 total_orders/total_amount 一并维护 */
+    private LocalDateTime lastOrderTime;
+
     private Integer status;
 
     private String remark;

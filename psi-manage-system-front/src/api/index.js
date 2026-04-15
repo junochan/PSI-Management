@@ -87,6 +87,11 @@ export const productApi = {
   delete: (id) => api.delete(`/products/${id}`),
   batchDelete: (ids) => api.delete('/products/batch', { data: ids }),
   uploadImage: (formData) => uploadApi.post('/products/image', formData),
+  /** Excel 异步批量导入（multipart，返回 jobId） */
+  importProducts: (formData) =>
+    uploadApi.post('/products/import', formData, { timeout: 120000 }),
+  /** 查询异步导入任务进度 */
+  getImportTask: (jobId) => api.get(`/products/import/${jobId}`),
   /** 以图搜图（百炼向量，可能较慢） */
   searchByImage: (data) => api.post('/products/search-by-image', data, { timeout: 120000 })
 }

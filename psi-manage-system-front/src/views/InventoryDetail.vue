@@ -313,6 +313,7 @@ import { useDataStore } from '@/stores/data'
 import { useUserStore } from '@/stores/user'
 import { inventoryApi, purchaseApi, salesApi } from '@/api'
 import { formatTime } from '@/utils/time'
+import { firstProductImageUrl } from '@/utils/productImages'
 
 const router = useRouter()
 const route = useRoute()
@@ -488,7 +489,7 @@ const purchaseRules = {
 // 工具函数
 const getProductImage = (productId) => {
   const product = products.value.find(p => p.id === productId)
-  return product?.image || null
+  return firstProductImageUrl(product?.image)
 }
 
 // 获取商品名称（从商品列表动态获取最新名称）

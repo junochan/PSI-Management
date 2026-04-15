@@ -9,7 +9,10 @@ import com.smartims.dto.ProductImageSearchRequest;
 import com.smartims.entity.Product;
 import com.smartims.exception.BusinessException;
 import com.smartims.service.ProductImageStorageService;
+import com.smartims.service.ProductImportService;
 import com.smartims.service.ProductService;
+import com.smartims.vo.ProductImportSubmitVO;
+import com.smartims.vo.ProductImportTaskVO;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
@@ -38,6 +41,7 @@ public class ProductController {
 
     private final ProductService productService;
     private final ProductImageStorageService productImageStorageService;
+    private final ProductImportService productImportService;
 
     @Operation(summary = "上传商品图片（本地存储，返回可写入商品的 URL）")
     @PostMapping(value = "/image", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
@@ -65,6 +69,20 @@ public class ProductController {
     public Result<PageResult<Product>> searchByImage(@Valid @RequestBody ProductImageSearchRequest request) {
         PageResult<Product> result = productService.searchByImage(request);
         return Result.success(result);
+    }
+
+    @Operation(summary = "异步批量导入商品（上传 Excel，返回任务 ID）")
+    @OperationLog(module = "商品管理", action = "导入", description = "提交 Excel 异步批量导入")
+    @PostMapping(value = "/import", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    public Result<ProductImportSubmitVO> importProductsFromExcel(@RequestParam("file") MultipartFile file) {
+        ProductImportSubmitVO vo = productImportService.submit(file);
+        return Result.success(vo);
+    }
+
+    @Operation(summary = "查询商品 Excel 导入任务进度")
+    @GetMapping("/import/{jobId}")
+    public Result<ProductImportTaskVO> getImportTask(@PathVariable String jobId) {
+        return Result.success(productImportService.getTask(jobId));
     }
 
     @Operation(summary = "查询商品详情")

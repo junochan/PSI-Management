@@ -226,6 +226,7 @@ CREATE TABLE `customer` (
   `credit_amount` DECIMAL(12,2) DEFAULT 0 COMMENT '信用额度',
   `total_orders` INT DEFAULT 0 COMMENT '累计订单数',
   `total_amount` DECIMAL(12,2) DEFAULT 0 COMMENT '累计消费金额',
+  `last_order_time` DATETIME DEFAULT NULL COMMENT '最近有效销售单下单时间（不含已取消）',
   `status` TINYINT DEFAULT 1 COMMENT '状态：1-正常，0-禁用',
   `remark` VARCHAR(500) DEFAULT NULL COMMENT '备注',
   `create_time` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',

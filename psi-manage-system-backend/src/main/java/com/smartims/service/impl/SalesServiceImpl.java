@@ -31,6 +31,7 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 
 /**
@@ -236,6 +237,7 @@ public class SalesServiceImpl implements SalesService {
             try {
                 salesOrderMapper.insert(order);
                 log.info("创建销售订单成功：orderNo={}", order.getOrderNo());
+                refreshCustomerOrderStats(order.getCustomerId());
                 return;
             } catch (DuplicateKeyException e) {
                 log.warn("销售单号冲突，重新分配 attempt={} orderNo={}", attempt + 1, order.getOrderNo());
@@ -289,6 +291,7 @@ public class SalesServiceImpl implements SalesService {
     @Transactional(rollbackFor = Exception.class)
     public void updateSalesOrder(Long id, SalesOrderDTO dto) {
         SalesOrder order = getSalesOrderById(id);
+        Long previousCustomerId = order.getCustomerId();
 
         // 只有待发货状态可以修改
         if (!"pending".equals(order.getStatus())) {
@@ -328,6 +331,10 @@ public class SalesServiceImpl implements SalesService {
 
         salesOrderMapper.updateById(order);
         log.info("更新销售订单成功：id={}", id);
+        refreshCustomerOrderStats(previousCustomerId);
+        if (!Objects.equals(previousCustomerId, order.getCustomerId())) {
+            refreshCustomerOrderStats(order.getCustomerId());
+        }
     }
 
     @Override
@@ -468,6 +475,56 @@ public class SalesServiceImpl implements SalesService {
         order.setStatus("cancelled"); // 已取消
         salesOrderMapper.updateById(order);
         log.info("取消订单成功：orderId={}", orderId);
+        refreshCustomerOrderStats(order.getCustomerId());
+    }
+
+    /**
+     * 按有效销售单（未删除、非已取消）重算客户的累计订单数、累计金额、最近下单时间。
+     */
+    private void refreshCustomerOrderStats(Long customerId) {
+        if (customerId == null) {
+            return;
+        }
+        Customer customer = customerMapper.selectById(customerId);
+        if (customer == null || (customer.getDeleted() != null && customer.getDeleted() == 1)) {
+            return;
+        }
+        LambdaQueryWrapper<SalesOrder> q = new LambdaQueryWrapper<>();
+        q.eq(SalesOrder::getCustomerId, customerId);
+        q.eq(SalesOrder::getDeleted, 0);
+        List<SalesOrder> orders = salesOrderMapper.selectList(q);
+
+        int count = 0;
+        BigDecimal total = BigDecimal.ZERO;
+        LocalDateTime lastOrderTime = null;
+
+        for (SalesOrder o : orders) {
+            if (isCancelledSalesOrder(o)) {
+                continue;
+            }
+            count++;
+            if (o.getAmount() != null) {
+                total = total.add(o.getAmount());
+            }
+            if (o.getCreateTime() != null) {
+                if (lastOrderTime == null || o.getCreateTime().isAfter(lastOrderTime)) {
+                    lastOrderTime = o.getCreateTime();
+                }
+            }
+        }
+
+        customer.setTotalOrders(count);
+        customer.setTotalAmount(total);
+        customer.setLastOrderTime(lastOrderTime);
+        customerMapper.updateById(customer);
+    }
+
+    private static boolean isCancelledSalesOrder(SalesOrder o) {
+        if (o == null) {
+            return true;
+        }
+        String s = o.getStatus();
+        return "cancelled".equals(s) || "已取消".equals(s);
     }
 
     @Override

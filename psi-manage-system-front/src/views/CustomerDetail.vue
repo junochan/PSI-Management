@@ -5,6 +5,7 @@
         <div class="card-header">
           <h3>客户详情</h3>
           <div class="header-actions">
+            <el-button v-if="canManageCustomer" type="danger" plain @click="deleteCustomerConfirm">删除客户</el-button>
             <el-button type="primary" @click="editCustomer">编辑客户</el-button>
             <el-button @click="goBack">返回</el-button>
           </div>
@@ -95,16 +96,27 @@
 <script setup>
 import { ref, computed, onMounted } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
-import { ElMessage } from 'element-plus'
+import { ElMessage, ElMessageBox } from 'element-plus'
 import { useDataStore } from '@/stores/data'
+import { useUserStore } from '@/stores/user'
+import { customerApi } from '@/api'
 import { formatTime } from '@/utils/time'
+import { firstProductImageUrl } from '@/utils/productImages'
 
 const router = useRouter()
 const route = useRoute()
 const dataStore = useDataStore()
+const userStore = useUserStore()
+
+const canManageCustomer = computed(() => userStore.hasPermission('sales:customer'))
 
 const customerId = computed(() => route.params.id)
 const customer = ref(null)
+
+const customerOrders = computed(() => {
+  const cid = Number(customerId.value)
+  return (dataStore.salesOrders || []).filter((o) => Number(o.customerId) === cid)
+})
 
 // 消费统计 - 从订单数据计算
 const customerStats = computed(() => {
@@ -126,7 +138,7 @@ const getStatusType = (status) => ({ 'completed': 'success', 'shipped': 'warning
 // 获取商品图片
 const getProductImage = (productId) => {
   const product = dataStore.products.find(p => p.id === productId)
-  return product?.image || null
+  return firstProductImageUrl(product?.image)
 }
 
 // 获取商品名称（从商品列表动态获取最新名称）
@@ -156,6 +168,30 @@ onMounted(async () => {
 
 const goBack = () => router.back()
 const editCustomer = () => { router.push(`/sales/customer/edit/${customerId.value}`) }
+
+const deleteCustomerConfirm = async () => {
+  if (!canManageCustomer.value) {
+    ElMessage.warning('无客户管理权限')
+    return
+  }
+  const name = customer.value?.name || '该客户'
+  try {
+    await ElMessageBox.confirm(`确定要删除客户「${name}」吗？删除后不可恢复。`, '删除确认', {
+      confirmButtonText: '确定',
+      cancelButtonText: '取消',
+      type: 'warning'
+    })
+    await customerApi.delete(Number(customerId.value))
+    ElMessage.success('客户已删除')
+    await dataStore.loadCustomers()
+    router.replace('/sales')
+  } catch (error) {
+    if (error !== 'cancel') {
+      ElMessage.error(error.message || '删除失败')
+    }
+  }
+}
+
 const viewOrder = (row) => { router.push(`/sales/order/${row.id}`) }
 </script>
 

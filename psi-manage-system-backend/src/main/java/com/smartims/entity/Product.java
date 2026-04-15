@@ -70,7 +70,7 @@ public class Product implements Serializable {
     private String status;
 
     /**
-     * 商品图片访问地址（如 /api/uploads/products/xxx.jpg，由上传接口返回）
+     * 商品图片：单张 URL，或多张 JSON 数组 / 逗号分隔 URL（至多 10 张，与 ProductImageLoader 一致）
      */
     private String image;
 

@@ -207,6 +207,7 @@ import * as echarts from 'echarts'
 import { useDataStore } from '@/stores/data'
 import { useUserStore } from '@/stores/user'
 import { dashboardApi } from '@/api'
+import { firstProductImageUrl } from '@/utils/productImages'
 
 const router = useRouter()
 const dataStore = useDataStore()
@@ -337,7 +338,7 @@ const formatOrderAmount = (v) => {
 // 获取商品图片
 const getProductImage = (productId) => {
   const product = dataStore.products.find(p => p.id === productId)
-  return product?.image || null
+  return firstProductImageUrl(product?.image)
 }
 
 // 获取商品名称（从商品列表动态获取最新名称）

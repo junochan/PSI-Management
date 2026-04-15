@@ -162,7 +162,7 @@
               </div>
               <div class="customer-stat">
                 <span class="stat-label">最近购买</span>
-                <span class="stat-value">{{ (c.totalOrders || 0) > 10 ? '2天前' : '今天' }}</span>
+                <span class="stat-value">{{ formatCustomerLastPurchase(c.lastOrderTime) }}</span>
               </div>
             </div>
             <div class="customer-contact">
@@ -172,6 +172,7 @@
             <div class="customer-actions">
               <el-button type="primary" @click="viewCustomerDetail(c)">查看详情</el-button>
               <el-button v-if="canManageCustomer" @click="editCustomer(c)">编辑</el-button>
+              <el-button v-if="canManageCustomer" type="danger" plain @click="deleteCustomerConfirm(c)">删除</el-button>
             </div>
           </el-card>
         </div>
@@ -596,10 +597,17 @@
 <script setup>
 import { ref, computed, onMounted, watch } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
-import { ElMessage } from 'element-plus'
+import { ElMessage, ElMessageBox } from 'element-plus'
 import { useDataStore } from '@/stores/data'
 import { useUserStore } from '@/stores/user'
 import { salesApi, customerApi, aftersalesApi, inventoryApi } from '@/api'
+import dayjs from 'dayjs'
+import relativeTime from 'dayjs/plugin/relativeTime'
+import 'dayjs/locale/zh-cn'
+import { firstProductImageUrl } from '@/utils/productImages'
+
+dayjs.extend(relativeTime)
+dayjs.locale('zh-cn')
 
 const router = useRouter()
 const route = useRoute()
@@ -616,6 +624,13 @@ const canReceiveOrder = computed(
   () => userStore.hasPermission('sales:receive') || userStore.hasPermission('sales:ship')
 )
 const canManageCustomer = computed(() => userStore.hasPermission('sales:customer'))
+
+/** 客户卡片「最近购买」：来自后端 lastOrderTime（与累计订单/金额同步维护） */
+const formatCustomerLastPurchase = (t) => {
+  if (t == null || t === '') return '—'
+  const d = dayjs(t)
+  return d.isValid() ? d.fromNow() : '—'
+}
 const canAftersalesCreate = computed(() => userStore.hasPermission('sales:aftersales'))
 
 const activeTab = ref('orders')
@@ -975,7 +990,7 @@ const formatPayStatus = (status) => {
 // 获取商品图片
 const getProductImage = (productId) => {
   const product = products.value.find(p => p.id === productId)
-  return product?.image || null
+  return firstProductImageUrl(product?.image)
 }
 
 // 获取商品名称（从商品列表动态获取最新名称）
@@ -1111,6 +1126,7 @@ const submitSales = async () => {
         salesDialogVisible.value = false
         await Promise.all([
           dataStore.loadSalesOrders(),
+          dataStore.loadCustomers(),
           fetchSalesOrderTable(false),
           loadStats()
         ])
@@ -1183,6 +1199,36 @@ const editCustomer = (c) => {
     remark: c.remark
   }
   customerDialogVisible.value = true
+}
+
+// 删除客户
+const deleteCustomerConfirm = async (c) => {
+  if (!canManageCustomer.value) {
+    ElMessage.warning('无客户管理权限')
+    return
+  }
+  try {
+    await ElMessageBox.confirm(`确定要删除客户「${c.name}」吗？删除后不可恢复。`, '删除确认', {
+      confirmButtonText: '确定',
+      cancelButtonText: '取消',
+      type: 'warning'
+    })
+    loading.value = true
+    try {
+      await customerApi.delete(c.id)
+      ElMessage.success('客户已删除')
+      await dataStore.loadCustomers()
+      await loadStats()
+    } catch (error) {
+      ElMessage.error(error.message || '删除失败')
+    } finally {
+      loading.value = false
+    }
+  } catch (error) {
+    if (error !== 'cancel') {
+      ElMessage.error(error.message || '删除失败')
+    }
+  }
 }
 
 // 提交售后工单 - 调用后端API
