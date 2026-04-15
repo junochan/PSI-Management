@@ -10,7 +10,7 @@ spring:
     name: smart-ims
 
   config:
-    import: optional:classpath:application-pro.yml
+    import: optional:classpath:application-local.yml
 
   profiles:
     active: dev
