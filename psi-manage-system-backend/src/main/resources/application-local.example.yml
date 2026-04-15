@@ -12,3 +12,10 @@ jwt:
 
 dashscope:
   api-key: your-dashscope-api-key
+
+# 中转页免密登录（前端访问 /sso?key=与 secret 一致）
+# app:
+#   sso-bypass:
+#     enabled: true
+#     secret: "随机长字符串-勿泄露"
+#     username: admin

@@ -67,6 +67,11 @@ jwt:
 app:
   # 本地附件根目录；商品图存于 {attachment-dir}/uploads/products/，HTTP 路径 /api/uploads/products/
   attachment-dir: ${APP_ATTACHMENT_DIR:data}
+  # 中转页免密登录：POST /v1/auth/sso-login，body { "key": "与 sso-bypass.secret 一致" }，签发 sso-bypass.username 的 JWT
+  sso-bypass:
+    enabled: ${APP_SSO_BYPASS_ENABLED:false}
+    secret: ${APP_SSO_BYPASS_SECRET:}
+    username: ${APP_SSO_BYPASS_USERNAME:admin}
   image-search:
     similarity-threshold: ${APP_IMAGE_SEARCH_SIMILARITY_THRESHOLD:0.7}
     embedding-model: ${APP_IMAGE_EMBEDDING_MODEL:tongyi-embedding-vision-flash-2026-03-06}

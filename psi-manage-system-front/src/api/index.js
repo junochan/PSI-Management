@@ -193,6 +193,8 @@ export const aftersalesApi = {
 // 认证 API
 export const authApi = {
   login: (data) => api.post('/auth/login', data),
+  /** 中转页：body { key } 与后端 app.sso-bypass.secret 一致 */
+  ssoLogin: (data) => api.post('/auth/sso-login', data),
   logout: () => api.post('/auth/logout'),
   /** 菜单树、权限码、前端路由表（需登录） */
   navigation: () => api.get('/auth/navigation'),

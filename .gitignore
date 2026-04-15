@@ -21,6 +21,7 @@ Thumbs.db
 
 # Env & local secrets (do not commit real keys)
 .env
+scripts/deploy.env
 .env.local
 .env.*.local
 **/application-local.yml
@@ -33,6 +34,9 @@ psi-manage-system-front/.vite/
 # Backend: generated embeddings cache & uploads (runtime data)
 psi-manage-system-backend/data/image-embeddings/
 psi-manage-system-backend/data/uploads/
+
+# Deploy runtime (scripts/deploy-linux.sh)
+scripts/.deploy/
 
 # Tooling / local agent state
 .claude/

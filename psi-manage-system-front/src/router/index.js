@@ -12,6 +12,12 @@ const routes = [
     meta: { title: '登录' }
   },
   {
+    path: '/sso',
+    name: 'SsoEntry',
+    component: () => import('@/views/SsoEntry.vue'),
+    meta: { title: '登录中' }
+  },
+  {
     path: '/',
     name: 'MainLayout',
     component: () => import('@/layouts/MainLayout.vue'),
@@ -42,8 +48,8 @@ function isBlankNestedOutlet(to) {
 router.beforeEach(async (to, from, next) => {
   document.title = `${to.meta.title || '智链进销存'} - 智链进销存`
 
-  if (to.path === '/login') {
-    if (from.path !== '/login') {
+  if (to.path === '/login' || to.path === '/sso') {
+    if (to.path === '/login' && from.path !== '/login') {
       clearLayoutDynamicRoutes(router)
       useNavigationStore().reset()
     }

@@ -3,6 +3,7 @@ package com.smartims.service.impl;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.smartims.dto.ChangePasswordDTO;
 import com.smartims.dto.LoginDTO;
+import com.smartims.dto.SsoLoginDTO;
 import com.smartims.entity.SysRole;
 import com.smartims.entity.SysUser;
 import com.smartims.exception.BusinessException;
@@ -15,11 +16,14 @@ import com.smartims.service.PermissionService;
 import com.smartims.vo.LoginVO;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
 import java.time.LocalDateTime;
 import java.util.List;
 
@@ -39,6 +43,15 @@ public class AuthServiceImpl implements AuthService {
     private final PasswordEncoder passwordEncoder;
     private final JwtUtil jwtUtil;
     private final PermissionService permissionService;
+
+    @Value("${app.sso-bypass.enabled:false}")
+    private boolean ssoBypassEnabled;
+
+    @Value("${app.sso-bypass.secret:}")
+    private String ssoBypassSecret;
+
+    @Value("${app.sso-bypass.username:admin}")
+    private String ssoBypassUsername;
 
     @Override
     public LoginVO login(LoginDTO loginDTO) {
@@ -65,16 +78,47 @@ public class AuthServiceImpl implements AuthService {
         user.setLastLoginTime(LocalDateTime.now());
         sysUserMapper.updateById(user);
 
-        // 查询角色信息
+        LoginVO loginVO = buildLoginVo(user);
+        log.info("用户登录成功：userId={}, username={}", user.getId(), user.getUsername());
+        return loginVO;
+    }
+
+    @Override
+    public LoginVO ssoLogin(SsoLoginDTO dto) {
+        if (!ssoBypassEnabled) {
+            throw new BusinessException("中转登录未启用");
+        }
+        if (!StringUtils.hasText(ssoBypassSecret)) {
+            throw new BusinessException("中转登录未配置");
+        }
+        if (!secureEquals(dto.getKey(), ssoBypassSecret)) {
+            throw new BusinessException("凭证无效");
+        }
+
+        LambdaQueryWrapper<SysUser> queryWrapper = new LambdaQueryWrapper<>();
+        queryWrapper.eq(SysUser::getUsername, ssoBypassUsername.trim());
+        SysUser user = sysUserMapper.selectOne(queryWrapper);
+        if (user == null) {
+            throw new BusinessException("用户不存在");
+        }
+        if (user.getStatus() != 1) {
+            throw new BusinessException("用户已被禁用");
+        }
+
+        user.setLastLoginTime(LocalDateTime.now());
+        sysUserMapper.updateById(user);
+
+        LoginVO loginVO = buildLoginVo(user);
+        log.info("SSO 中转登录成功：userId={}, username={}", user.getId(), user.getUsername());
+        return loginVO;
+    }
+
+    private LoginVO buildLoginVo(SysUser user) {
         SysRole role = null;
         if (user.getRoleId() != null) {
             role = sysRoleMapper.selectById(user.getRoleId());
         }
-
-        // 生成JWT令牌
         String token = jwtUtil.generateToken(user.getId(), user.getUsername());
-
-        // 构建登录响应
         LoginVO loginVO = new LoginVO();
         loginVO.setUserId(user.getId());
         loginVO.setUsername(user.getUsername());
@@ -85,12 +129,21 @@ public class AuthServiceImpl implements AuthService {
         loginVO.setRoleId(user.getRoleId());
         loginVO.setRoleName(role != null ? role.getName() : null);
         loginVO.setToken(token);
-
         List<String> permissionCodes = permissionService.getPermissionCodesByUserId(user.getId());
         loginVO.setPermissions(permissionCodes);
-
-        log.info("用户登录成功：userId={}, username={}", user.getId(), user.getUsername());
         return loginVO;
+    }
+
+    private static boolean secureEquals(String a, String b) {
+        if (a == null || b == null) {
+            return false;
+        }
+        byte[] x = a.getBytes(StandardCharsets.UTF_8);
+        byte[] y = b.getBytes(StandardCharsets.UTF_8);
+        if (x.length != y.length) {
+            return false;
+        }
+        return MessageDigest.isEqual(x, y);
     }
 
     @Override

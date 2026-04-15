@@ -96,6 +96,7 @@ public class PermissionAuthorizationFilter extends OncePerRequestFilter {
 
     private boolean isPublicApi(String uri) {
         return pathMatcher.match("/v1/auth/login", uri)
+                || pathMatcher.match("/v1/auth/sso-login", uri)
                 || pathMatcher.match("/v1/util/**", uri);
     }
 

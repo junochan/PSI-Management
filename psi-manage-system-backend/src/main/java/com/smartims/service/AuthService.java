@@ -2,6 +2,7 @@ package com.smartims.service;
 
 import com.smartims.dto.ChangePasswordDTO;
 import com.smartims.dto.LoginDTO;
+import com.smartims.dto.SsoLoginDTO;
 import com.smartims.vo.LoginVO;
 
 /**
@@ -16,6 +17,11 @@ public interface AuthService {
      * 用户登录
      */
     LoginVO login(LoginDTO loginDTO);
+
+    /**
+     * 中转页 SSO：校验共享密钥后为指定用户签发 JWT（需在配置中开启）
+     */
+    LoginVO ssoLogin(SsoLoginDTO dto);
 
     /**
      * 用户登出

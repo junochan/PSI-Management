@@ -3,6 +3,7 @@ package com.smartims.controller;
 import com.smartims.common.Result;
 import com.smartims.dto.ChangePasswordDTO;
 import com.smartims.dto.LoginDTO;
+import com.smartims.dto.SsoLoginDTO;
 import com.smartims.security.UserContext;
 import com.smartims.service.AuthService;
 import com.smartims.service.NavigationService;
@@ -33,6 +34,13 @@ public class AuthController {
     @PostMapping("/login")
     public Result<LoginVO> login(@Valid @RequestBody LoginDTO loginDTO) {
         LoginVO loginVO = authService.login(loginDTO);
+        return Result.success("登录成功", loginVO);
+    }
+
+    @Operation(summary = "中转页 SSO 登录（共享密钥换取 JWT）")
+    @PostMapping("/sso-login")
+    public Result<LoginVO> ssoLogin(@Valid @RequestBody SsoLoginDTO dto) {
+        LoginVO loginVO = authService.ssoLogin(dto);
         return Result.success("登录成功", loginVO);
     }
 
