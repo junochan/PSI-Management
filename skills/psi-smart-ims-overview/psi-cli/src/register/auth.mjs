@@ -1,4 +1,4 @@
-import { getRootOptions, printJson } from '../lib/util.mjs'
+import { getRootOptions, printJson, readBodyFromOptions } from '../lib/util.mjs'
 import { createApi, saveToken, clearToken, TOKEN_PATH } from '../lib/client.mjs'
 
 export function registerAuth (program, { getApi }) {
@@ -59,5 +59,38 @@ export function registerAuth (program, { getApi }) {
     .description('GET /auth/navigation（需 Bearer：菜单树、权限码、前端动态路由）')
     .action(async (_opts, cmd) => {
       printJson(await getApi(cmd).get('/auth/navigation'))
+    })
+
+  auth
+    .command('sso-login')
+    .description('POST /auth/sso-login（Body: { key }，与后端 app.sso-bypass.secret 一致）')
+    .option('-k, --key <secret>', '共享密钥')
+    .option('-d, --data <json>', 'JSON，如 {"key":"..."}')
+    .option('--no-save', '不把 token 写入文件（仍打印登录 JSON）')
+    .action(async (opts, cmd) => {
+      let body = readBodyFromOptions(opts)
+      if (!body && opts.key) body = { key: opts.key }
+      if (!body?.key) throw new Error('请提供 --key 或 --data {"key":"..."}')
+      const root = getRootOptions(cmd)
+      const api = createApi({
+        baseURL: root.baseUrl || process.env.PSI_API_BASE || 'http://localhost:8080/api/v1',
+        token: '',
+        timeout: Number(root.timeout) || 120000
+      })
+      const data = await api.post('/auth/sso-login', body)
+      if (!opts.noSave && data?.token) saveToken(data.token)
+      printJson(data)
+    })
+
+  auth
+    .command('change-password')
+    .description('POST /auth/change-password（需 Bearer：当前用户修改密码）')
+    .option('-d, --data <json>', 'JSON：{"currentPassword","newPassword"}')
+    .option('-f, --file <path>', 'JSON 文件')
+    .action(async (opts, cmd) => {
+      const body = readBodyFromOptions(opts)
+      if (!body) throw new Error('请提供 --data 或 --file')
+      await getApi(cmd).post('/auth/change-password', body)
+      printJson({ ok: true })
     })
 }

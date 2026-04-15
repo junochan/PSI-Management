@@ -3,7 +3,7 @@ import FormData from 'form-data'
 import { printJson, readBodyFromOptions, parseQueryJson } from '../lib/util.mjs'
 
 export function registerProducts (program, { getApi }) {
-  const products = program.command('products').description('商品：CRUD、批量删、图片上传、以图搜图')
+  const products = program.command('products').description('商品：CRUD、批量删、Excel 导入、图片上传、以图搜图')
 
   products
     .command('list')
@@ -69,6 +69,30 @@ export function registerProducts (program, { getApi }) {
       const api = getApi(cmd)
       await api.delete('/products/batch', { data: body })
       printJson({ ok: true })
+    })
+
+  products
+    .command('import-excel')
+    .description('POST /products/import（multipart，Excel，字段名 file，返回 jobId）')
+    .requiredOption('--file <path>', '本地 Excel 路径')
+    .action(async (opts, cmd) => {
+      const api = getApi(cmd)
+      const form = new FormData()
+      form.append('file', fs.createReadStream(opts.file))
+      const data = await api.post('/products/import', form, {
+        headers: form.getHeaders(),
+        maxBodyLength: Infinity,
+        maxContentLength: Infinity,
+        timeout: 120000
+      })
+      printJson(data)
+    })
+
+  products
+    .command('import-task <jobId>')
+    .description('GET /products/import/:jobId 查询异步导入任务进度')
+    .action(async (jobId, _opts, cmd) => {
+      printJson(await getApi(cmd).get(`/products/import/${jobId}`))
     })
 
   products

@@ -78,6 +78,12 @@ export function registerEntities (program, ctx) {
 
   const warehouses = program.command('warehouses').description('仓库')
   warehouses
+    .command('options')
+    .description('GET /warehouses/options 下拉（id/编码/名称，无统计）')
+    .action(async (_opts, cmd) => {
+      printJson(await getApi(cmd).get('/warehouses/options'))
+    })
+  warehouses
     .command('list')
     .description('GET /warehouses')
     .option('-q, --query <json>', '查询 JSON', '{}')

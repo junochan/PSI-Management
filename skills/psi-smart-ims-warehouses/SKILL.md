@@ -1,7 +1,7 @@
 ---
 name: psi-smart-ims-warehouses
 description: >-
-  智链进销存仓库：通过 psims warehouses 管理仓库档案、获取全部仓库下拉列表、批量删除；对应 HTTP /warehouses。
+  智链进销存仓库：通过 psims warehouses 管理仓库档案、轻量下拉 options、全部列表 all、批量删除；对应 HTTP /warehouses。
   当用户配置多仓、库存/调拨选择仓库或脚本初始化仓库时使用。
 ---
 
@@ -9,11 +9,12 @@ description: >-
 
 ## 功能与作用
 
-仓库定义 **库存所在物理/逻辑仓位**。前端在库存相关仓库详情页展示；`all` 接口常用于下拉框一次性拉取全部仓库（不分页）。
+仓库定义 **库存所在物理/逻辑仓位**。前端在库存相关仓库详情页展示；**`options`** 为轻量下拉（id/编码/名称，无统计），**`all`** 为带统计信息的全部仓库列表（与 `warehouseApi.options` / `warehouseApi.all` 一致）。
 
 ## CLI 调用
 
 ```bash
+psims warehouses options
 psims warehouses list -q "{\"current\":1,\"size\":10}"
 psims warehouses all
 psims warehouses get 1
@@ -25,6 +26,7 @@ psims warehouses batch-delete -d "[1,2,3]"
 
 | 子命令 | 说明 |
 |--------|------|
+| `options` | 轻量下拉 `GET /warehouses/options` |
 | `list` | 分页列表 |
 | `all` | 全部仓库（无分页） |
 | `get <id>` | 详情 |
@@ -35,6 +37,7 @@ psims warehouses batch-delete -d "[1,2,3]"
 
 | 方法 | 路径 |
 |------|------|
+| GET | `/warehouses/options` |
 | GET | `/warehouses` |
 | GET | `/warehouses/all` |
 | GET | `/warehouses/{id}` |

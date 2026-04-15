@@ -153,7 +153,6 @@ export const salesApi = {
   update: (id, data) => api.put(`/sales/orders/${id}`, data),
   payment: (id) => api.put(`/sales/orders/${id}/payment`),
   shipping: (id, data) => api.post(`/sales/orders/${id}/shipping`, data),
-  shippingList: (params) => api.get('/sales/shipping', { params }),
   received: (id) => api.put(`/sales/orders/${id}/received`),
   cancel: (id) => api.put(`/sales/orders/${id}/cancel`),
   stats: () => api.get('/sales/stats')

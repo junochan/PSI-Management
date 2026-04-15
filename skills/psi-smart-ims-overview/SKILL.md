@@ -98,11 +98,14 @@ psims products list -q '{"current":1,"size":10}'
 
 CLI 子命令名与 `psi-manage-system-front/src/api/index.js` 中的封装 **大体** 对应；底层即对 `GET/POST/PUT/DELETE http(s)://<host>:8080/api/v1/...` 发请求。
 
-**与前端 `authApi.navigation` / `supplierIndustryApi` / `userApi.uploadAvatar` 对齐的命令**（均需 Bearer，先 `auth login`）；**仪表盘**见技能 **`psi-smart-ims-dashboard`**。
+**与前端 `authApi`（`navigation`、`ssoLogin`、`changePassword`）、`supplierIndustryApi`、`userApi.uploadAvatar` 对齐的命令**（除登录类接口外需 Bearer，先 `auth login` 或 `auth sso-login`）；**仪表盘**见技能 **`psi-smart-ims-dashboard`**。
 
 ```bash
 psims auth navigation
+psims auth sso-login --key "<与后端 app.sso-bypass.secret 一致的密钥>"
+psims auth change-password -d "{\"currentPassword\":\"旧\",\"newPassword\":\"新密码至少6位\"}"
 psims supplier-industries
+psims warehouses options
 psims users upload-avatar --file ./avatar.png
 ```
 
@@ -131,17 +134,18 @@ psims users upload-avatar --file ./avatar.png
 
 | 技能目录 | 作用 |
 |----------|------|
-| `psi-smart-ims-auth` | 登录、登出、token 路径、`auth navigation`（`GET /auth/navigation`） |
+| `psi-smart-ims-auth` | 登录、SSO 登录、改密、登出、token 路径、`auth navigation`（`GET /auth/navigation`） |
 | `psi-smart-ims-dashboard` | 仪表盘聚合数据、`dashboard overview`（`GET /dashboard/overview`） |
 | `psi-smart-ims-products` | 商品、分类、图片、以图搜图 |
 | `psi-smart-ims-suppliers` | 供应商、`supplier-industries`（`GET /supplier-industries`） |
 | `psi-smart-ims-customers` | 客户 |
-| `psi-smart-ims-warehouses` | 仓库 |
+| `psi-smart-ims-warehouses` | 仓库（含 `GET /warehouses/options` 轻量下拉） |
 | `psi-smart-ims-purchase` | 采购订单、采购入库、统计 |
 | `psi-smart-ims-sales` | 销售订单、付款发货收货、统计 |
 | `psi-smart-ims-inventory` | 库存、调拨、预警、出入库、以图搜图 |
 | `psi-smart-ims-aftersales` | 售后 |
 | `psi-smart-ims-system` | 用户（含 `users upload-avatar`）、角色权限、日志、工具 |
+| `psi-smart-ims-upload-image-followup` | 仅上传商品图时：默认图搜图 → 命中后查库存/库位与销售、采购订单 |
 
 ## OpenClaw 使用建议
 

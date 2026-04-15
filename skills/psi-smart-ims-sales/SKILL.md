@@ -13,7 +13,7 @@ description: >-
 
 对应前端：`/sales`、销售单详情。
 
-**说明**：前端 `api/index.js` 中曾定义 `GET /sales/shipping`，当前后端 **未提供** 该路由；发货请使用 **`POST /sales/orders/{id}/shipping`**（CLI：`psims sales orders shipping <id>`）。
+**说明**：发货列表无独立 REST 资源；在途/已发状态以 **销售订单** 列表与详情字段为准。确认发货请使用 **`POST /sales/orders/{id}/shipping`**（CLI：`psims sales orders shipping <id>`）。
 
 ## CLI 调用
 
