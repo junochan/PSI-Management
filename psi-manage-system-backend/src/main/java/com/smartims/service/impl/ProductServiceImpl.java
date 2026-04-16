@@ -36,8 +36,10 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 
@@ -187,6 +189,7 @@ public class ProductServiceImpl implements ProductService {
 
         Page<Product> page = new Page<>(pageQuery.getPage(), pageQuery.getSize());
         Page<Product> result = productMapper.selectPage(page, queryWrapper);
+        enrichRealtimeStockFields(result.getRecords());
 
         return PageResult.build(result.getTotal(), result.getCurrent(), result.getSize(), result.getRecords());
     }
@@ -223,6 +226,7 @@ public class ProductServiceImpl implements ProductService {
                 Product::getId,
                 Product::getImage,
                 req.getSimilarityThreshold());
+        enrichRealtimeStockFields(sorted);
         long total = sorted.size();
         int from = (int) ((page - 1) * size);
         List<Product> pageRecords = new ArrayList<>();
@@ -257,7 +261,51 @@ public class ProductServiceImpl implements ProductService {
         if (product == null || product.getDeleted() == 1) {
             throw new BusinessException("商品不存在");
         }
+        enrichRealtimeStockFields(List.of(product));
         return product;
+    }
+
+    /**
+     * 基于库存表实时聚合商品库存与安全库存，覆盖 Product 返回值中的 stock / safeStock 字段。
+     */
+    private void enrichRealtimeStockFields(List<Product> products) {
+        if (products == null || products.isEmpty()) {
+            return;
+        }
+        Set<Long> productIds = new HashSet<>();
+        for (Product p : products) {
+            if (p != null && p.getId() != null) {
+                productIds.add(p.getId());
+            }
+        }
+        if (productIds.isEmpty()) {
+            return;
+        }
+
+        LambdaQueryWrapper<Inventory> q = new LambdaQueryWrapper<>();
+        q.in(Inventory::getProductId, productIds);
+        q.eq(Inventory::getDeleted, 0);
+        List<Inventory> inventories = inventoryMapper.selectList(q);
+
+        Map<Long, Integer> stockSumByProductId = new HashMap<>();
+        Map<Long, Integer> safeStockSumByProductId = new HashMap<>();
+        for (Inventory inv : inventories) {
+            if (inv.getProductId() == null) {
+                continue;
+            }
+            int stock = inv.getStock() != null ? inv.getStock() : 0;
+            int safeStock = inv.getSafeStock() != null ? inv.getSafeStock() : 0;
+            stockSumByProductId.merge(inv.getProductId(), stock, Integer::sum);
+            safeStockSumByProductId.merge(inv.getProductId(), safeStock, Integer::sum);
+        }
+
+        for (Product p : products) {
+            if (p == null || p.getId() == null) {
+                continue;
+            }
+            p.setStock(stockSumByProductId.getOrDefault(p.getId(), 0));
+            p.setSafeStock(safeStockSumByProductId.getOrDefault(p.getId(), 0));
+        }
     }
 
     @Override
