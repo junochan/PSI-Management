@@ -166,6 +166,7 @@ export const inventoryApi = {
   createTransfer: (data) => api.post('/inventory/transfers', data),
   confirmTransfer: (id) => api.put(`/inventory/transfers/${id}/confirm`),
   transferList: (params) => api.get('/inventory/transfers', { params }),
+  transferGet: (id) => api.get(`/inventory/transfers/${id}`),
   warningList: (params) => api.get('/inventory/warnings', { params }),
   handleWarning: (id, remark) => api.put(`/inventory/warnings/${id}/handle`, null, { params: { handleRemark: remark } }),
   stats: () => api.get('/inventory/stats'),
@@ -242,6 +243,12 @@ export const categoryApi = {
   create: (data) => api.post('/categories', data),
   update: (id, data) => api.put(`/categories/${id}`, data),
   delete: (id) => api.delete(`/categories/${id}`)
+}
+
+// 系统配置 API
+export const systemConfigApi = {
+  get: () => api.get('/settings/config'),
+  update: (data) => api.put('/settings/config', data)
 }
 
 export default api

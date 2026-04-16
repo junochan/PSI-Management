@@ -4,7 +4,6 @@
     <el-card class="table-card">
       <template #header>
         <div class="card-header">
-          <h3>商品列表</h3>
           <div class="header-actions">
             <el-select v-model="filterCategory" placeholder="按分类筛选" clearable filterable style="width: 140px">
               <el-option v-for="c in categoriesList" :key="c.id" :label="c.name" :value="c.name" />
@@ -157,7 +156,12 @@
           <div class="image-tip">最多 10 张；支持 JPG、PNG、GIF、WEBP；选择后自动上传至服务器</div>
         </el-form-item>
         <el-form-item label="商品名称" prop="name">
-          <el-input v-model="productForm.name" placeholder="输入商品名称" />
+          <el-input
+            v-model="productForm.name"
+            placeholder="输入商品名称"
+            :maxlength="100"
+            show-word-limit
+          />
         </el-form-item>
         <el-row :gutter="20">
           <el-col :span="12">
@@ -472,6 +476,8 @@ const productForm = ref({
 const productRules = {
   imageList: [
     {
+      required: true,
+      message: '请至少上传 1 张商品图片',
       validator: (_, v, cb) => {
         if (!v?.length) cb(new Error('请至少上传 1 张商品图片'))
         else if (v.length > 10) cb(new Error('商品图片最多 10 张'))
@@ -480,7 +486,10 @@ const productRules = {
       trigger: 'change'
     }
   ],
-  name: [{ required: true, message: '请输入商品名称', trigger: 'blur' }],
+  name: [
+    { required: true, message: '请输入商品名称', trigger: 'blur' },
+    { max: 100, message: '商品名称长度不能超过 100 个字符', trigger: 'blur' }
+  ],
   categoryName: [{ required: true, message: '请选择商品分类', trigger: 'change' }],
   costPrice: [{ required: true, message: '请输入成本价', trigger: 'blur' }],
   salePrice: [{ required: true, message: '请输入销售价', trigger: 'blur' }]
@@ -934,14 +943,8 @@ onMounted(() => {
 
     .card-header {
       display: flex;
-      justify-content: space-between;
+      justify-content: flex-end;
       align-items: center;
-
-      h3 {
-        font-size: 16px;
-        font-weight: 600;
-        color: #303133;
-      }
 
       .header-actions {
         display: flex;

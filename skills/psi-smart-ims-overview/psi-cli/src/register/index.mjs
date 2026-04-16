@@ -7,6 +7,7 @@ import { registerSales } from './sales.mjs'
 import { registerInventory } from './inventory.mjs'
 import { registerAftersales } from './aftersales.mjs'
 import { registerSystem } from './system.mjs'
+import { registerSpec } from './spec.mjs'
 
 export function registerAll (program, ctx) {
   registerAuth(program, ctx)
@@ -18,4 +19,5 @@ export function registerAll (program, ctx) {
   registerInventory(program, ctx)
   registerAftersales(program, ctx)
   registerSystem(program, ctx)
+  registerSpec(program, ctx)
 }

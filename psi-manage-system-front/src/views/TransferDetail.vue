@@ -3,7 +3,6 @@
     <el-card>
       <template #header>
         <div class="card-header">
-          <h3>调拨单详情</h3>
           <div class="header-actions">
             <el-button type="primary" @click="confirmReceive" v-if="isTransferring(transfer?.status)">确认收货</el-button>
             <el-button type="danger" @click="cancelTransfer" v-if="isTransferring(transfer?.status)">取消调拨</el-button>
@@ -32,7 +31,6 @@
 
     <!-- 调拨进度 -->
     <el-card style="margin-top: 20px">
-      <template #header><h3>调拨进度</h3></template>
       <el-steps :active="isTransferCompleted(transfer?.status) ? 3 : 2" finish-status="success">
         <el-step title="创建调拨" description="调拨单已创建" />
         <el-step title="商品运输" :description="isTransferCompleted(transfer?.status) ? '运输完成' : '正在运输中'" />
@@ -42,7 +40,6 @@
 
     <!-- 调拨详情 -->
     <el-card style="margin-top: 20px">
-      <template #header><h3>调拨详情</h3></template>
       <div class="transfer-info">
         <div class="warehouse-box">
           <div class="warehouse-label">调出仓库</div>
@@ -74,12 +71,11 @@
 import { ref, computed, onMounted } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { ElMessage } from 'element-plus'
-import { useDataStore } from '@/stores/data'
+import { inventoryApi } from '@/api'
 import { formatTime } from '@/utils/time'
 
 const router = useRouter()
 const route = useRoute()
-const dataStore = useDataStore()
 
 const transferId = computed(() => route.params.id)
 const transfer = ref(null)
@@ -99,8 +95,18 @@ const isTransferring = (status) => formatTransferStatus(status) === '调拨中'
 const isTransferCompleted = (status) => formatTransferStatus(status) === '已完成'
 
 onMounted(async () => {
-  await dataStore.loadTransfers()
-  transfer.value = dataStore.transfers.find(t => t.id === Number(transferId.value))
+  const id = Number(transferId.value)
+  if (!id) {
+    ElMessage.warning('调拨单 ID 无效')
+    router.replace('/inventory')
+    return
+  }
+  try {
+    transfer.value = await inventoryApi.transferGet(id)
+  } catch (e) {
+    ElMessage.error(e.message || '加载调拨单失败')
+    router.replace('/inventory')
+  }
 })
 
 const goBack = () => router.back()
@@ -119,9 +125,8 @@ const printTransfer = () => { ElMessage.success('打印调拨单功能已触发'
 .transfer-detail {
   .card-header {
     display: flex;
-    justify-content: space-between;
+    justify-content: flex-end;
     align-items: center;
-    h3 { font-size: 18px; font-weight: 600; color: #303133; }
     .header-actions { display: flex; gap: 12px; }
   }
   .order-no { color: #E94560; font-family: monospace; }

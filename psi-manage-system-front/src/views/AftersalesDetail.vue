@@ -3,7 +3,6 @@
     <el-card>
       <template #header>
         <div class="card-header">
-          <h3>售后工单详情</h3>
           <div class="header-actions">
             <el-button type="primary" @click="handleResolve" v-if="isProcessing(order?.status)">确认解决</el-button>
             <el-button @click="goBack">返回</el-button>
@@ -27,7 +26,6 @@
 
     <!-- 处理进度 -->
     <el-card style="margin-top: 20px">
-      <template #header><h3>处理进度</h3></template>
       <el-steps :active="isResolved(order?.status) ? 3 : 2" finish-status="success">
         <el-step title="工单创建" description="售后工单已提交" />
         <el-step title="问题审核" description="正在核实问题详情" />
@@ -39,7 +37,6 @@
     <el-card style="margin-top: 20px">
       <template #header>
         <div class="card-header">
-          <h3>处理记录</h3>
           <el-button type="primary" @click="addRecord"><el-icon><Plus /></el-icon>添加记录</el-button>
         </div>
       </template>
@@ -71,13 +68,11 @@
 import { ref, computed, onMounted } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { ElMessage } from 'element-plus'
-import { useDataStore } from '@/stores/data'
+import { aftersalesApi } from '@/api'
 import { formatTime } from '@/utils/time'
 
 const router = useRouter()
 const route = useRoute()
-const dataStore = useDataStore()
-
 const orderId = computed(() => route.params.id)
 const order = ref(null)
 
@@ -120,8 +115,18 @@ const isResolved = (status) => {
 }
 
 onMounted(async () => {
-  await dataStore.loadAftersales()
-  order.value = dataStore.aftersalesOrders.find(o => o.id === Number(orderId.value))
+  const id = Number(orderId.value)
+  if (!id) {
+    ElMessage.warning('工单 ID 无效')
+    router.replace('/sales')
+    return
+  }
+  try {
+    order.value = await aftersalesApi.get(id)
+  } catch (e) {
+    ElMessage.error(e.message || '加载售后工单失败')
+    router.replace('/sales')
+  }
 })
 
 const goBack = () => router.back()
@@ -136,9 +141,8 @@ const addRecord = () => { ElMessage.success('添加处理记录功能已触发')
 .aftersales-detail {
   .card-header {
     display: flex;
-    justify-content: space-between;
+    justify-content: flex-end;
     align-items: center;
-    h3 { font-size: 18px; font-weight: 600; color: #303133; }
     .header-actions { display: flex; gap: 12px; }
   }
   .order-no { color: #E94560; font-family: monospace; }

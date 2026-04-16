@@ -3,7 +3,6 @@
     <el-card>
       <template #header>
         <div class="card-header">
-          <h3>客户详情</h3>
           <div class="header-actions">
             <el-button v-if="canManageCustomer" type="danger" plain @click="deleteCustomerConfirm">删除客户</el-button>
             <el-button type="primary" @click="editCustomer">编辑客户</el-button>
@@ -16,9 +15,6 @@
         <el-descriptions-item label="客户类型">
           <el-tag :type="customer?.type === '企业' ? 'warning' : 'info'" effect="light">{{ customer?.type }}</el-tag>
         </el-descriptions-item>
-        <el-descriptions-item label="会员等级">
-          <el-tag :type="(customer?.vipLevel || '普通') === 'VIP' ? 'warning' : 'info'" effect="light">{{ customer?.vipLevel || '普通' }}</el-tag>
-        </el-descriptions-item>
         <el-descriptions-item label="联系电话">{{ customer?.phone }}</el-descriptions-item>
         <el-descriptions-item label="收货地址" :span="2">{{ customer?.address }}</el-descriptions-item>
         <el-descriptions-item label="备注" :span="2">{{ customer?.remark || '-' }}</el-descriptions-item>
@@ -27,7 +23,6 @@
 
     <!-- 消费统计 -->
     <el-card style="margin-top: 20px">
-      <template #header><h3>消费统计</h3></template>
       <div class="stats-grid">
         <div class="stat-item">
           <div class="stat-icon"><el-icon><Money /></el-icon></div>
@@ -55,7 +50,6 @@
 
     <!-- 历史订单 -->
     <el-card style="margin-top: 20px">
-      <template #header><h3>历史订单</h3></template>
       <el-table :data="customerOrders" empty-text="暂无数据" style="width: 100%">
         <el-table-column label="订单编号" width="150">
           <template #default="{ row }"><span class="order-no">{{ row.orderNo }}</span></template>
@@ -63,9 +57,9 @@
         <el-table-column label="商品" min-width="180" show-overflow-tooltip>
           <template #default="{ row }">
             <div class="product-cell-mini">
-              <img v-if="getProductImage(row.productId)" :src="getProductImage(row.productId)" class="product-thumb-mini" />
-              <span v-else class="product-icon-mini">{{ getProductIcon(getProductName(row.productId, row.productName || row.product)) }}</span>
-              <span class="product-name-mini">{{ getProductName(row.productId, row.productName || row.product) }}</span>
+              <img v-if="getProductImage(row)" :src="getProductImage(row)" class="product-thumb-mini" />
+              <span v-else class="product-icon-mini">{{ getProductIcon(getProductName(row)) }}</span>
+              <span class="product-name-mini">{{ getProductName(row) }}</span>
             </div>
           </template>
         </el-table-column>
@@ -97,25 +91,24 @@
 import { ref, computed, onMounted } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { useDataStore } from '@/stores/data'
 import { useUserStore } from '@/stores/user'
-import { customerApi } from '@/api'
+import { customerApi, salesApi } from '@/api'
 import { formatTime } from '@/utils/time'
 import { firstProductImageUrl } from '@/utils/productImages'
 
 const router = useRouter()
 const route = useRoute()
-const dataStore = useDataStore()
 const userStore = useUserStore()
 
 const canManageCustomer = computed(() => userStore.hasPermission('sales:customer'))
 
 const customerId = computed(() => route.params.id)
 const customer = ref(null)
+const salesOrders = ref([])
 
 const customerOrders = computed(() => {
   const cid = Number(customerId.value)
-  return (dataStore.salesOrders || []).filter((o) => Number(o.customerId) === cid)
+  return (salesOrders.value || []).filter((o) => Number(o.customerId) === cid)
 })
 
 // 消费统计 - 从订单数据计算
@@ -135,16 +128,14 @@ const formatOrderStatus = (status) => {
 
 const getStatusType = (status) => ({ 'completed': 'success', 'shipped': 'warning', 'pending': 'warning', 'cancelled': 'danger', '已完成': 'success', '处理中': 'warning', '待发货': 'warning', '已取消': 'danger' }[status] || 'info')
 
-// 获取商品图片
-const getProductImage = (productId) => {
-  const product = dataStore.products.find(p => p.id === productId)
-  return firstProductImageUrl(product?.image)
+// 商品图片以订单返回为准
+const getProductImage = (row) => {
+  return firstProductImageUrl(row?.productImage || row?.image)
 }
 
-// 获取商品名称（从商品列表动态获取最新名称）
-const getProductName = (productId, fallbackName) => {
-  const product = dataStore.products.find(p => p.id === productId)
-  return product?.name || fallbackName || '-'
+// 商品名称以订单返回为准
+const getProductName = (row) => {
+  return row?.productName || row?.product || '-'
 }
 
 // 获取商品图标（无图片时使用）
@@ -158,12 +149,21 @@ const getProductIcon = (productName) => {
 }
 
 onMounted(async () => {
-  await Promise.all([
-    dataStore.loadCustomers(),
-    dataStore.loadSalesOrders(),
-    dataStore.loadProducts()
-  ])
-  customer.value = dataStore.customers.find(c => c.id === Number(customerId.value))
+  const id = Number(customerId.value)
+  if (!id) {
+    ElMessage.warning('客户 ID 无效')
+    router.replace('/sales')
+    return
+  }
+  try {
+    customer.value = await customerApi.get(id)
+  } catch (e) {
+    ElMessage.error(e.message || '加载客户失败')
+    router.replace('/sales')
+    return
+  }
+  const res = await salesApi.list({ page: 1, size: 500 })
+  salesOrders.value = res.list || []
 })
 
 const goBack = () => router.back()
@@ -183,7 +183,6 @@ const deleteCustomerConfirm = async () => {
     })
     await customerApi.delete(Number(customerId.value))
     ElMessage.success('客户已删除')
-    await dataStore.loadCustomers()
     router.replace('/sales')
   } catch (error) {
     if (error !== 'cancel') {
@@ -199,9 +198,8 @@ const viewOrder = (row) => { router.push(`/sales/order/${row.id}`) }
 .customer-detail {
   .card-header {
     display: flex;
-    justify-content: space-between;
+    justify-content: flex-end;
     align-items: center;
-    h3 { font-size: 18px; font-weight: 600; color: #303133; }
     .header-actions { display: flex; gap: 12px; }
   }
   .customer-name { font-weight: 600; color: #303133; }

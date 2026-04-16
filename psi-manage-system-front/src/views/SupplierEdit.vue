@@ -3,7 +3,6 @@
     <el-card>
       <template #header>
         <div class="card-header">
-          <h3>编辑供应商</h3>
           <div class="header-actions">
             <el-button @click="goBack">返回</el-button>
           </div>
@@ -58,13 +57,11 @@
 import { ref, computed, onMounted } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { ElMessage } from 'element-plus'
-import { useDataStore } from '@/stores/data'
 import { useUserStore } from '@/stores/user'
-import { supplierApi } from '@/api'
+import { supplierApi, supplierIndustryApi } from '@/api'
 
 const router = useRouter()
 const route = useRoute()
-const dataStore = useDataStore()
 const userStore = useUserStore()
 
 const supplierId = computed(() => route.params.id)
@@ -79,7 +76,7 @@ const supplierForm = ref({
   remark: ''
 })
 
-const supplierIndustriesList = computed(() => dataStore.supplierIndustries || [])
+const supplierIndustriesList = ref([])
 
 const supplierRules = {
   name: [{ required: true, message: '请输入供应商名称', trigger: 'blur' }],
@@ -93,8 +90,17 @@ onMounted(async () => {
     router.replace('/purchase')
     return
   }
-  await Promise.all([dataStore.loadSuppliers(), dataStore.loadSupplierIndustries()])
-  const supplier = dataStore.suppliers.find(s => s.id === Number(supplierId.value))
+  const id = Number(supplierId.value)
+  if (!id) {
+    ElMessage.warning('供应商 ID 无效')
+    router.replace('/purchase')
+    return
+  }
+  const [supplier, industries] = await Promise.all([
+    supplierApi.get(id),
+    supplierIndustryApi.list()
+  ])
+  supplierIndustriesList.value = Array.isArray(industries) ? industries : []
   if (supplier) {
     supplierForm.value = {
       name: supplier.name,
@@ -122,7 +128,6 @@ const submitEdit = async () => {
           email: supplierForm.value.email,
           remark: supplierForm.value.remark
         })
-        await dataStore.loadSuppliers()
         ElMessage.success('供应商信息已更新')
         router.push('/purchase')
       } catch (error) {
@@ -137,9 +142,8 @@ const submitEdit = async () => {
 .supplier-edit {
   .card-header {
     display: flex;
-    justify-content: space-between;
+    justify-content: flex-end;
     align-items: center;
-    h3 { font-size: 18px; font-weight: 600; color: #303133; }
     .header-actions { display: flex; gap: 12px; }
   }
 }

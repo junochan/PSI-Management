@@ -3,7 +3,6 @@
     <el-card>
       <template #header>
         <div class="card-header">
-          <h3>供应商详情</h3>
           <div class="header-actions">
             <el-button v-if="canManageSupplier" type="primary" @click="editSupplier">编辑供应商</el-button>
             <el-button @click="goBack">返回</el-button>
@@ -22,7 +21,6 @@
 
     <!-- 合作统计 -->
     <el-card style="margin-top: 20px">
-      <template #header><h3>合作统计</h3></template>
       <div class="stats-grid">
         <div class="stat-item">
           <div class="stat-icon"><el-icon><Document /></el-icon></div>
@@ -43,7 +41,6 @@
 
     <!-- 采购记录 -->
     <el-card style="margin-top: 20px">
-      <template #header><h3>采购记录</h3></template>
       <el-table :data="supplierOrders" empty-text="暂无数据" style="width: 100%">
         <el-table-column label="采购单号" width="150">
           <template #default="{ row }"><span class="order-no">{{ row.orderNo }}</span></template>
@@ -51,9 +48,9 @@
         <el-table-column label="商品" min-width="150">
           <template #default="{ row }">
             <div class="product-cell-mini">
-              <img v-if="getProductImage(row.productId)" :src="getProductImage(row.productId)" class="product-thumb-mini" />
-              <span v-else class="product-icon-mini">{{ getProductIcon(getProductName(row.productId, row.productName || row.product)) }}</span>
-              <span class="product-name-mini">{{ getProductName(row.productId, row.productName || row.product) }}</span>
+              <img v-if="getProductImage(row)" :src="getProductImage(row)" class="product-thumb-mini" />
+              <span v-else class="product-icon-mini">{{ getProductIcon(getProductName(row)) }}</span>
+              <span class="product-name-mini">{{ getProductName(row) }}</span>
             </div>
           </template>
         </el-table-column>
@@ -90,26 +87,26 @@
 import { ref, computed, onMounted } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { ElMessage } from 'element-plus'
-import { useDataStore } from '@/stores/data'
 import { useUserStore } from '@/stores/user'
+import { supplierApi, purchaseApi } from '@/api'
 import { formatTime } from '@/utils/time'
 import { firstProductImageUrl } from '@/utils/productImages'
 
 const router = useRouter()
 const route = useRoute()
-const dataStore = useDataStore()
 const userStore = useUserStore()
 
 const canManageSupplier = computed(() => userStore.hasPermission('purchase:supplier'))
 
 const supplierId = computed(() => route.params.id)
 const supplier = ref(null)
+const purchaseOrders = ref([])
 
 // 获取当前供应商的最新名称（用于订单显示）
 const currentSupplierName = computed(() => supplier.value?.name || '')
 
 const supplierOrders = computed(() => {
-  return dataStore.purchaseOrders.filter(o => o.supplierId === Number(supplierId.value))
+  return purchaseOrders.value.filter(o => o.supplierId === Number(supplierId.value))
 })
 
 // 计算统计数据
@@ -133,16 +130,14 @@ const formatPayStatus = (status) => {
 const getInboundStatusType = (status) => ({ 'completed': 'success', 'partial': 'warning', 'pending': 'info', 'cancelled': 'danger', '已完成': 'success', '部分入库': 'warning', '待入库': 'info', '已取消': 'danger' }[status] || 'info')
 const getPayStatusType = (status) => ({ 'paid': 'success', 'unpaid': 'warning', 'refunded': 'danger', '已付款': 'success', '待付款': 'warning', '已退款': 'danger' }[status] || 'info')
 
-// 获取商品图片
-const getProductImage = (productId) => {
-  const product = dataStore.products.find(p => p.id === productId)
-  return firstProductImageUrl(product?.image)
+// 商品图片以采购单返回为准
+const getProductImage = (row) => {
+  return firstProductImageUrl(row?.productImage || row?.image)
 }
 
-// 获取商品名称（从商品列表动态获取最新名称）
-const getProductName = (productId, fallbackName) => {
-  const product = dataStore.products.find(p => p.id === productId)
-  return product?.name || fallbackName || '-'
+// 商品名称以采购单返回为准
+const getProductName = (row) => {
+  return row?.productName || row?.product || '-'
 }
 
 // 获取商品图标（无图片时使用）
@@ -161,13 +156,21 @@ onMounted(async () => {
     router.replace('/purchase')
     return
   }
-  await Promise.all([
-    dataStore.loadSuppliers(),
-    dataStore.loadSupplierIndustries(),
-    dataStore.loadPurchaseOrders(),
-    dataStore.loadProducts()
-  ])
-  supplier.value = dataStore.suppliers.find(s => s.id === Number(supplierId.value))
+  const id = Number(supplierId.value)
+  if (!id) {
+    ElMessage.warning('供应商 ID 无效')
+    router.replace('/purchase')
+    return
+  }
+  try {
+    supplier.value = await supplierApi.get(id)
+  } catch (e) {
+    ElMessage.error(e.message || '加载供应商失败')
+    router.replace('/purchase')
+    return
+  }
+  const res = await purchaseApi.list({ page: 1, size: 500 })
+  purchaseOrders.value = res.list || []
 })
 
 const goBack = () => router.back()
@@ -179,9 +182,8 @@ const viewOrder = (row) => { router.push(`/purchase/order/${row.id}`) }
 .supplier-detail {
   .card-header {
     display: flex;
-    justify-content: space-between;
+    justify-content: flex-end;
     align-items: center;
-    h3 { font-size: 18px; font-weight: 600; color: #303133; }
     .header-actions { display: flex; gap: 12px; }
   }
   .supplier-name { font-weight: 600; color: #303133; }

@@ -68,6 +68,8 @@ public class ApplicationPermissionRegistry {
         addRule("/v1/users/**", null, List.of("settings:user"));
         addRule("/v1/roles/**", null, List.of("settings:role"));
         addRule("/v1/logs/**", null, List.of("settings:user"));
+        addRule("/v1/settings/config", Set.of("GET", "HEAD"), List.of("settings", "settings:config"));
+        addRule("/v1/settings/config", HTTP_WRITE, List.of("settings:config"));
         addRule("/v1/dashboard/**", null, List.of("dashboard"));
 
         // 商品/分类：无子路径的 GET（/v1/products、/v1/categories）单独注册，避免 /** 未匹配时落入仅菜单码 products 的兜底规则

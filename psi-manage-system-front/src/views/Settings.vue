@@ -6,7 +6,6 @@
         <el-card>
           <template #header>
             <div class="card-header">
-              <h3>用户列表</h3>
               <el-button type="primary" size="small" @click="openUserDialog"><el-icon><Plus /></el-icon>添加用户</el-button>
             </div>
           </template>
@@ -51,7 +50,6 @@
         <el-card>
           <template #header>
             <div class="card-header">
-              <h3>角色列表</h3>
               <el-button type="primary" size="small" @click="openRoleDialog"><el-icon><Plus /></el-icon>添加角色</el-button>
             </div>
           </template>
@@ -94,7 +92,6 @@
       <el-tab-pane label="系统配置" name="system">
         <div class="config-sections">
           <el-card class="config-card">
-            <template #header><h3>基本信息</h3></template>
             <el-form label-width="100px">
               <el-form-item label="公司名称"><el-input v-model="systemConfig.companyName" /></el-form-item>
               <el-form-item label="联系电话"><el-input v-model="systemConfig.phone" /></el-form-item>
@@ -102,7 +99,6 @@
             </el-form>
           </el-card>
           <el-card class="config-card">
-            <template #header><h3>库存设置</h3></template>
             <el-form label-width="100px">
               <el-form-item label="安全库存预警"><el-select v-model="systemConfig.stockWarning" style="width: 100%"><el-option label="开启" value="开启" /><el-option label="关闭" value="关闭" /></el-select></el-form-item>
               <el-form-item label="呆滞商品天数"><el-input-number v-model="systemConfig.staleDays" :min="1" style="width: 100%" /></el-form-item>
@@ -117,7 +113,6 @@
         <el-card>
           <template #header>
             <div class="card-header">
-              <h3>分类列表</h3>
               <el-button type="primary" size="small" @click="openCategoryDialog"><el-icon><Plus /></el-icon>添加分类</el-button>
             </div>
           </template>
@@ -246,15 +241,16 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue'
-import { useRouter } from 'vue-router'
+import { ref, computed, onMounted, watch } from 'vue'
+import { useRouter, useRoute } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { useDataStore } from '@/stores/data'
 import { useUserStore } from '@/stores/user'
-import { userApi, roleApi, categoryApi } from '@/api'
+import { userApi, roleApi, categoryApi, systemConfigApi } from '@/api'
 import { formatTime } from '@/utils/time'
 
 const router = useRouter()
+const route = useRoute()
 
 const dataStore = useDataStore()
 const userStore = useUserStore()
@@ -273,8 +269,24 @@ const paginatedUsers = computed(() => {
 // 判断当前登录用户是否是超级管理员
 const isCurrentUserSuperAdmin = computed(() => userStore.userInfo?.roleId === 1)
 
-// 非超级管理员默认显示系统配置
-const activeTab = ref(isCurrentUserSuperAdmin.value ? 'users' : 'system')
+const SUPER_ADMIN_TABS = ['users', 'roles', 'system', 'categories', 'logs']
+const NORMAL_USER_TABS = ['system', 'logs']
+
+const resolveTabFromRoute = () => {
+  const tab = String(route.query.tab || '')
+  const validTabs = isCurrentUserSuperAdmin.value ? SUPER_ADMIN_TABS : NORMAL_USER_TABS
+  if (validTabs.includes(tab)) return tab
+  return isCurrentUserSuperAdmin.value ? 'users' : 'system'
+}
+
+// 支持通过 /settings?tab=roles 定位页签
+const activeTab = ref(resolveTabFromRoute())
+watch(
+  () => route.query.tab,
+  () => {
+    activeTab.value = resolveTabFromRoute()
+  }
+)
 const userDialogVisible = ref(false)
 const editUserMode = ref(false)
 const currentUser = ref(null)
@@ -500,7 +512,14 @@ const loadRolesAndPermissions = async () => {
   }
 }
 
-const systemConfig = ref({ companyName: '深圳华创科技有限公司', phone: '0755-88888888', address: '深圳市南山区科技园', stockWarning: '开启', staleDays: 90 })
+const defaultSystemConfig = {
+  companyName: '深圳华创科技有限公司',
+  phone: '0755-88888888',
+  address: '深圳市南山区科技园',
+  stockWarning: '开启',
+  staleDays: 90
+}
+const systemConfig = ref({ ...defaultSystemConfig })
 
 const userForm = ref({ username: '', name: '', email: '', roleId: 3, password: '' })
 const userRules = {
@@ -588,7 +607,24 @@ const submitUser = async () => {
     }
   })
 }
-const saveConfig = () => { ElMessage.success('系统配置已保存') }
+const loadSystemConfig = async () => {
+  try {
+    const config = await systemConfigApi.get()
+    systemConfig.value = { ...defaultSystemConfig, ...(config || {}) }
+  } catch (error) {
+    ElMessage.error(error.message || '加载系统配置失败')
+  }
+}
+
+const saveConfig = async () => {
+  try {
+    await systemConfigApi.update(systemConfig.value)
+    ElMessage.success('系统配置已保存')
+    await loadSystemConfig()
+  } catch (error) {
+    ElMessage.error(error.message || '保存系统配置失败')
+  }
+}
 
 // 删除用户（超级管理员不能删除）
 const deleteUser = async (user) => {
@@ -617,6 +653,7 @@ const deleteUser = async (user) => {
 // 按角色与权限按需加载：超级管理员进设置页才拉用户/角色/商品/分类；操作日志需 settings:user
 onMounted(async () => {
   const tasks = []
+  tasks.push(loadSystemConfig())
   if (userStore.userInfo?.roleId === 1) {
     tasks.push(
       dataStore.loadUsers(),
@@ -635,12 +672,9 @@ onMounted(async () => {
 <style lang="scss" scoped>
 .settings-page {
   .page-tabs { :deep(.el-tabs__header) { margin-bottom: 16px; } }
-  .card-header { display: flex; justify-content: space-between; align-items: center; h3 { font-size: 16px; font-weight: 600; color: #303133; } }
+  .card-header { display: flex; justify-content: flex-end; align-items: center; }
   .pagination-wrapper { display: flex; justify-content: flex-end; padding-top: 16px; }
   .config-sections { display: grid; grid-template-columns: repeat(2, 1fr); gap: 20px; margin-bottom: 20px; }
-  .config-card {
-    :deep(.el-card__header) { h3 { font-size: 16px; font-weight: 600; color: #303133; padding-bottom: 12px; border-bottom: 1px solid #E4E7ED; } }
-  }
   .ip-address { font-family: monospace; color: #606266; }
 }
 </style>

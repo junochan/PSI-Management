@@ -56,6 +56,13 @@ public class InventoryController {
         return Result.success(result);
     }
 
+    @Operation(summary = "查询调拨单详情")
+    @GetMapping("/transfers/{id}")
+    public Result<InventoryTransfer> getTransferById(@PathVariable Long id) {
+        InventoryTransfer transfer = inventoryService.getTransferById(id);
+        return Result.success(transfer);
+    }
+
     @Operation(summary = "获取库存统计数据")
     @GetMapping("/stats")
     public Result<InventoryStatsVO> getInventoryStats() {

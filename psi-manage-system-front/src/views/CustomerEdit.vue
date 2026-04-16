@@ -3,7 +3,6 @@
     <el-card>
       <template #header>
         <div class="card-header">
-          <h3>编辑客户</h3>
           <div class="header-actions">
             <el-button v-if="canManageCustomer" type="danger" plain @click="deleteCustomerConfirm">删除客户</el-button>
             <el-button @click="goBack">返回</el-button>
@@ -14,25 +13,12 @@
         <el-form-item label="客户名称" prop="name">
           <el-input v-model="customerForm.name" placeholder="输入客户名称" />
         </el-form-item>
-        <el-row :gutter="20">
-          <el-col :span="12">
-            <el-form-item label="客户类型">
-              <el-select v-model="customerForm.type" style="width: 100%">
-                <el-option label="个人客户" value="个人" />
-                <el-option label="企业客户" value="企业" />
-              </el-select>
-            </el-form-item>
-          </el-col>
-          <el-col :span="12">
-            <el-form-item label="会员等级">
-              <el-select v-model="customerForm.vipLevel" style="width: 100%">
-                <el-option label="VIP" value="VIP" />
-                <el-option label="白银" value="白银" />
-                <el-option label="普通" value="普通" />
-              </el-select>
-            </el-form-item>
-          </el-col>
-        </el-row>
+        <el-form-item label="客户类型">
+          <el-select v-model="customerForm.type" style="width: 100%">
+            <el-option label="个人客户" value="个人" />
+            <el-option label="企业客户" value="企业" />
+          </el-select>
+        </el-form-item>
         <el-form-item label="联系电话" prop="phone">
           <el-input v-model="customerForm.phone" placeholder="输入联系电话" />
         </el-form-item>
@@ -56,13 +42,11 @@
 import { ref, computed, onMounted } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { useDataStore } from '@/stores/data'
 import { useUserStore } from '@/stores/user'
 import { customerApi } from '@/api'
 
 const router = useRouter()
 const route = useRoute()
-const dataStore = useDataStore()
 const userStore = useUserStore()
 
 const canManageCustomer = computed(() => userStore.hasPermission('sales:customer'))
@@ -86,8 +70,13 @@ const customerRules = {
 }
 
 onMounted(async () => {
-  await dataStore.loadCustomers()
-  const customer = dataStore.customers.find(c => c.id === Number(customerId.value))
+  const id = Number(customerId.value)
+  if (!id) {
+    ElMessage.warning('客户 ID 无效')
+    router.replace('/sales')
+    return
+  }
+  const customer = await customerApi.get(id)
   if (customer) {
     customerForm.value = {
       name: customer.name,
@@ -116,7 +105,6 @@ const deleteCustomerConfirm = async () => {
     })
     await customerApi.delete(Number(customerId.value))
     ElMessage.success('客户已删除')
-    await dataStore.loadCustomers()
     router.replace('/sales')
   } catch (error) {
     if (error !== 'cancel') {
@@ -138,7 +126,6 @@ const submitEdit = async () => {
           address: customerForm.value.address,
           remark: customerForm.value.remark
         })
-        await dataStore.loadCustomers()
         ElMessage.success('客户信息已更新')
         router.push('/sales')
       } catch (error) {
@@ -153,9 +140,8 @@ const submitEdit = async () => {
 .customer-edit {
   .card-header {
     display: flex;
-    justify-content: space-between;
+    justify-content: flex-end;
     align-items: center;
-    h3 { font-size: 18px; font-weight: 600; color: #303133; }
     .header-actions { display: flex; gap: 12px; }
   }
 }

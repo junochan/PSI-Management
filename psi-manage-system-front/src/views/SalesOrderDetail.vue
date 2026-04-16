@@ -3,7 +3,6 @@
     <el-card>
       <template #header>
         <div class="card-header">
-          <h3>销售单详情</h3>
           <div class="header-actions">
             <el-button type="success" @click="handlePayment" v-if="order?.status === 'pending' && order?.payStatus === 'unpaid'">确认付款</el-button>
             <el-button type="primary" @click="handleShip" v-if="order?.status === 'pending' && order?.payStatus === 'paid'">确认发货</el-button>
@@ -15,7 +14,7 @@
       <el-descriptions :column="2" border>
         <el-descriptions-item label="订单编号"><span class="order-no">{{ order?.orderNo }}</span></el-descriptions-item>
         <el-descriptions-item label="下单时间">{{ formatTime(order?.createTime) }}</el-descriptions-item>
-        <el-descriptions-item label="客户">{{ order?.customerName || order?.customer }}</el-descriptions-item>
+        <el-descriptions-item label="客户">{{ customerDetail?.name || order?.customerName || order?.customer || '-' }}</el-descriptions-item>
         <el-descriptions-item label="商品">
           <div class="product-cell">
             <img v-if="getProductImage(order?.productId)" :src="getProductImage(order?.productId)" class="product-thumb" />
@@ -33,16 +32,15 @@
         <el-descriptions-item label="待发货"><span class="pending-qty">{{ pendingQuantity }}</span></el-descriptions-item>
         <el-descriptions-item label="订单状态"><el-tag :type="getStatusType(order?.status)">{{ formatOrderStatus(order?.status) }}</el-tag></el-descriptions-item>
         <el-descriptions-item label="付款状态"><el-tag :type="getPayStatusType(order?.status === 'completed' ? 'paid' : order?.payStatus)">{{ formatPayStatus(order?.status === 'completed' ? 'paid' : order?.payStatus) }}</el-tag></el-descriptions-item>
-        <el-descriptions-item label="付款方式">{{ order?.payMethod || '-' }}</el-descriptions-item>
-        <el-descriptions-item label="期望到达日期">{{ order?.expectArriveDate || '-' }}</el-descriptions-item>
-        <el-descriptions-item label="操作人">{{ order?.operatorName || '-' }}</el-descriptions-item>
+        <el-descriptions-item label="付款方式">{{ order?.payMethod || order?.paymentMethod || '-' }}</el-descriptions-item>
+        <el-descriptions-item label="期望到达日期">{{ order?.expectArriveDate || order?.expectedArriveDate || '-' }}</el-descriptions-item>
+        <el-descriptions-item label="操作人">{{ order?.operatorName || order?.operator || order?.creatorName || '-' }}</el-descriptions-item>
         <el-descriptions-item label="备注">{{ order?.remark || '-' }}</el-descriptions-item>
       </el-descriptions>
     </el-card>
 
     <!-- 发货进度 -->
     <el-card style="margin-top: 20px">
-      <template #header><h3>发货进度</h3></template>
       <el-steps :active="getStepActive()" finish-status="success">
         <el-step title="下单成功" :description="stepDescriptions.place" />
         <el-step title="付款确认" :description="stepDescriptions.pay" />
@@ -53,15 +51,12 @@
 
     <!-- 物流信息 -->
     <el-card style="margin-top: 20px" v-if="order?.logisticsNo">
-      <template #header>
-        <h3>物流信息</h3>
-      </template>
       <el-descriptions :column="2" border>
         <el-descriptions-item label="物流公司">
           <span class="logistics-company">{{ order?.logisticsCompany }}</span>
         </el-descriptions-item>
         <el-descriptions-item label="物流单号">
-          <span class="tracking-no">{{ order?.logisticsNo }}</span>
+          {{ order?.logisticsNo }}
           <el-button type="primary" link size="small" @click="copyTrackingNo" style="margin-left: 8px">复制</el-button>
         </el-descriptions-item>
         <el-descriptions-item label="发货仓库">{{ getWarehouseName(order?.warehouseId) || order?.warehouseName || order?.warehouse }}</el-descriptions-item>
@@ -77,7 +72,6 @@
 
     <!-- 待发货提示 -->
     <el-card style="margin-top: 20px" v-if="order?.status === 'pending' && !order?.logisticsNo">
-      <template #header><h3>物流信息</h3></template>
       <el-empty description="暂无物流信息，请点击「确认发货」填写发货信息" :image-size="80" />
     </el-card>
   </div>
@@ -87,31 +81,72 @@
 import { ref, computed, onMounted } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { ElMessage } from 'element-plus'
-import { useDataStore } from '@/stores/data'
-import { salesApi } from '@/api'
+import { categoryApi, customerApi, productApi, salesApi, warehouseApi } from '@/api'
 import { formatTime } from '@/utils/time'
 import { firstProductImageUrl } from '@/utils/productImages'
 
 const router = useRouter()
 const route = useRoute()
-const dataStore = useDataStore()
 
 const orderId = computed(() => route.params.id)
 const order = ref(null)
+const productDetail = ref(null)
+const warehouseDetail = ref(null)
+const customerDetail = ref(null)
+const categoryDetail = ref(null)
+
+const resolveId = (value) => {
+  const id = Number(value)
+  return Number.isFinite(id) && id > 0 ? id : null
+}
+
+const loadRelatedData = async () => {
+  productDetail.value = null
+  warehouseDetail.value = null
+  customerDetail.value = null
+  categoryDetail.value = null
+  if (!order.value) return
+
+  const productId = resolveId(order.value.productId)
+  const warehouseId = resolveId(order.value.warehouseId)
+  const customerId = resolveId(order.value.customerId)
+
+  const [productResult, warehouseResult, customerResult] = await Promise.allSettled([
+    productId ? productApi.get(productId) : Promise.resolve(null),
+    warehouseId ? warehouseApi.get(warehouseId) : Promise.resolve(null),
+    customerId ? customerApi.get(customerId) : Promise.resolve(null)
+  ])
+
+  if (productResult.status === 'fulfilled') productDetail.value = productResult.value
+  if (warehouseResult.status === 'fulfilled') warehouseDetail.value = warehouseResult.value
+  if (customerResult.status === 'fulfilled') customerDetail.value = customerResult.value
+
+  const categoryId = resolveId(productDetail.value?.categoryId)
+  if (categoryId) {
+    try {
+      categoryDetail.value = await categoryApi.get(categoryId)
+    } catch {
+      categoryDetail.value = null
+    }
+  }
+}
 
 /** 详情页拉取单笔订单，确保收货地址等字段与后端一致 */
 const fetchOrderDetail = async () => {
   const id = Number(orderId.value)
-  if (!id) return
+  if (!id) {
+    ElMessage.warning('订单 ID 无效')
+    router.replace('/sales')
+    return
+  }
   try {
     order.value = await salesApi.get(id)
-  } catch {
-    order.value = dataStore.salesOrders.find((o) => o.id === id) || null
+    await loadRelatedData()
+  } catch (e) {
+    ElMessage.error(e.message || '加载订单失败')
+    router.replace('/sales')
   }
 }
-
-// 仓库列表
-const warehousesList = computed(() => dataStore.warehouses || [])
 
 // 计算发货数量
 const shippedQuantity = computed(() => order.value?.shippedQuantity || (order.value?.logisticsNo ? order.value?.quantity : 0))
@@ -122,35 +157,33 @@ const getPayStatusType = (status) => ({ 'paid': 'success', 'unpaid': 'warning', 
 
 // 获取商品图片
 const getProductImage = (productId) => {
-  const product = dataStore.products.find(p => p.id === productId)
-  return firstProductImageUrl(product?.image)
+  if (!order.value || order.value.productId !== productId) return ''
+  return firstProductImageUrl(productDetail.value?.image || order.value.productImage || order.value.image)
 }
 
-// 获取商品名称（从商品列表动态获取最新名称）
+// 商品名称优先使用关联详情接口
 const getProductName = (productId, fallbackName) => {
-  const product = dataStore.products.find(p => p.id === productId)
-  return product?.name || fallbackName || '-'
+  if (!order.value || order.value.productId !== productId) return fallbackName || '-'
+  return productDetail.value?.name || order.value.productName || order.value.product || fallbackName || '-'
 }
 
-// 动态获取仓库名称 - 从仓库列表中根据warehouseId查找
+// 仓库名称优先使用关联详情接口
 const getWarehouseName = (warehouseId) => {
-  const warehouse = warehousesList.value.find(w => w.id === warehouseId)
-  return warehouse?.name || ''
+  if (!order.value || order.value.warehouseId !== warehouseId) return ''
+  return warehouseDetail.value?.name || order.value.warehouseName || order.value.warehouse || ''
 }
 
-// 获取商品分类名称
+// 商品分类优先使用关联详情接口
 const productCategoryName = computed(() => {
   if (!order.value) return ''
-  const product = dataStore.products.find(p => p.id === order.value.productId)
-  if (product) {
-    // 从分类列表中查找分类名称
-    if (product.categoryId) {
-      const category = dataStore.categories.find(c => c.id === product.categoryId)
-      return category?.name || product.categoryName || product.category || ''
-    }
-    return product.categoryName || product.category || ''
-  }
-  return ''
+  return (
+    order.value.categoryName ||
+    order.value.category ||
+    productDetail.value?.categoryName ||
+    productDetail.value?.category ||
+    categoryDetail.value?.name ||
+    '-'
+  )
 })
 
 // 获取商品图标（无图片时使用）
@@ -216,28 +249,53 @@ const getStepActive = () => {
   return 1
 }
 
-// 加载订单数据
-const loadOrderData = async () => {
-  await Promise.all([
-    dataStore.loadSalesOrders(),
-    dataStore.loadProducts(),
-    dataStore.loadWarehouses(),
-    dataStore.loadCategories()
-  ])
-  await fetchOrderDetail()
-}
-
 onMounted(async () => {
-  await loadOrderData()
+  await fetchOrderDetail()
 })
 
 const goBack = () => router.back()
 
-// 复制物流单号
-const copyTrackingNo = () => {
-  if (order.value?.logisticsNo) {
-    navigator.clipboard.writeText(order.value.logisticsNo)
+// 复制物流单号（Clipboard API 在非 HTTPS 等环境常失败，需 textarea 回退）
+const copyTrackingNo = async () => {
+  const text = String(order.value?.logisticsNo ?? '').trim()
+  if (!text) return
+
+  const fallbackCopy = () => {
+    const ta = document.createElement('textarea')
+    ta.value = text
+    ta.setAttribute('readonly', '')
+    ta.style.position = 'fixed'
+    ta.style.left = '-9999px'
+    ta.style.opacity = '0'
+    document.body.appendChild(ta)
+    ta.focus()
+    ta.select()
+    ta.setSelectionRange(0, text.length)
+    let ok = false
+    try {
+      ok = document.execCommand('copy')
+    } finally {
+      document.body.removeChild(ta)
+    }
+    return ok
+  }
+
+  let ok = false
+  try {
+    if (navigator.clipboard?.writeText && window.isSecureContext) {
+      await navigator.clipboard.writeText(text)
+      ok = true
+    } else {
+      ok = fallbackCopy()
+    }
+  } catch {
+    ok = fallbackCopy()
+  }
+
+  if (ok) {
     ElMessage.success('物流单号已复制')
+  } else {
+    ElMessage.error('复制失败，请手动选择单号复制')
   }
 }
 
@@ -246,7 +304,7 @@ const handlePayment = async () => {
   try {
     await salesApi.payment(order.value.id)
     ElMessage.success(`订单 ${order.value.orderNo} 已确认付款`)
-    await loadOrderData()
+    await fetchOrderDetail()
   } catch (error) {
     ElMessage.error(error.message || '确认付款失败')
   }
@@ -265,7 +323,7 @@ const handleReceived = async () => {
   try {
     await salesApi.received(order.value.id)
     ElMessage.success(`订单 ${order.value.orderNo} 已确认收货`)
-    await loadOrderData()
+    await fetchOrderDetail()
   } catch (error) {
     ElMessage.error(error.message || '确认收货失败')
   }
@@ -276,13 +334,8 @@ const handleReceived = async () => {
 .sales-order-detail {
   .card-header {
     display: flex;
-    justify-content: space-between;
+    justify-content: flex-end;
     align-items: center;
-    h3 {
-      font-size: 18px;
-      font-weight: 600;
-      color: #303133;
-    }
     .header-actions {
       display: flex;
       gap: 12px;
@@ -322,11 +375,6 @@ const handleReceived = async () => {
   .logistics-company {
     font-weight: 600;
     color: #409EFF;
-  }
-
-  .tracking-no {
-    font-family: monospace;
-    color: #303133;
   }
 
   // 商品图片样式

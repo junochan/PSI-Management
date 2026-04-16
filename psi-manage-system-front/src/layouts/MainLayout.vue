@@ -74,6 +74,9 @@
                 <span>📷 更换头像</span>
               </div>
             </el-upload>
+            <div class="avatar-actions">
+              <el-button link type="danger" @click="clearAvatar" :disabled="avatarUploading || !profileForm.avatar">移除头像</el-button>
+            </div>
           </div>
           <el-form ref="profileFormRef" :model="profileForm" :rules="profileRules" label-width="80px">
             <el-form-item label="姓名">
@@ -192,7 +195,7 @@ const passwordFormRef = ref()
 const profileForm = ref({
   avatar: '',
   email: 'admin@inventory.com',
-  phone: '138****8888'
+  phone: ''
 })
 
 const profileRules = {
@@ -200,7 +203,7 @@ const profileRules = {
     { type: 'email', message: '请输入正确的邮箱格式', trigger: 'blur' }
   ],
   phone: [
-    { pattern: /^1[3-9]\d{9}$|^1[3-9]\d{9}\*{4}\d{4}$/, message: '请输入正确的手机号', trigger: 'blur' }
+    { pattern: /^(|1[3-9]\d{9}|1[3-9]\d{9}\*{4}\d{4})$/, message: '请输入正确的手机号', trigger: 'blur' }
   ]
 }
 
@@ -289,6 +292,10 @@ const handleAvatarChange = async (file) => {
   }
 }
 
+const clearAvatar = () => {
+  profileForm.value.avatar = ''
+}
+
 // 保存个人设置
 const saveProfile = async () => {
   if (profileTab.value === 'info') {
@@ -311,13 +318,13 @@ const saveProfile = async () => {
         username,
         name,
         email: profileForm.value.email,
-        phone: profileForm.value.phone || undefined,
-        avatar: profileForm.value.avatar || undefined,
+        phone: profileForm.value.phone?.trim() ?? '',
+        avatar: profileForm.value.avatar ?? '',
         roleId
       })
       userStore.updateUser({
         email: profileForm.value.email,
-        phone: profileForm.value.phone,
+        phone: profileForm.value.phone?.trim() ?? '',
         avatar: profileForm.value.avatar || ''
       })
       if (userStore.hasPermission('settings:user')) {
@@ -641,6 +648,10 @@ const saveProfile = async () => {
     gap: 4px;
     opacity: 0;
     transition: opacity 0.3s;
+  }
+
+  .avatar-actions {
+    margin-top: 8px;
   }
 }
 </style>

@@ -6,7 +6,6 @@
         <el-card>
           <template #header>
             <div class="card-header">
-              <h3>库存列表</h3>
               <div class="header-actions">
                 <el-select v-model="filterProduct" placeholder="按商品筛选" clearable filterable style="width: 160px">
                   <el-option v-for="p in products" :key="p.id" :label="p.name" :value="p.id" />
@@ -134,7 +133,6 @@
         <el-card>
           <template #header>
             <div class="card-header">
-              <h3>调拨记录</h3>
               <el-button v-if="canTransferOp" type="primary" @click="openTransferDialog()"><el-icon><Plus /></el-icon>新建调拨</el-button>
             </div>
           </template>
@@ -2559,16 +2557,10 @@ watch(
   .page-tabs { :deep(.el-tabs__header) { margin-bottom: 16px; } }
   .card-header {
     display: flex;
-    justify-content: space-between;
+    justify-content: flex-end;
     align-items: flex-start;
     flex-wrap: wrap;
     gap: 12px;
-    h3 {
-      font-size: 16px;
-      font-weight: 600;
-      color: #303133;
-      line-height: 32px;
-    }
     .header-actions {
       display: flex;
       align-items: center;

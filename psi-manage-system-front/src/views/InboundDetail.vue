@@ -3,7 +3,6 @@
     <el-card>
       <template #header>
         <div class="card-header">
-          <h3>入库单详情</h3>
           <div class="header-actions">
             <el-button @click="printInbound">打印入库单</el-button>
             <el-button @click="goBack">返回</el-button>
@@ -27,7 +26,6 @@
 
     <!-- 入库详情 -->
     <el-card style="margin-top: 20px">
-      <template #header><h3>入库详情</h3></template>
       <div class="inbound-info">
         <div class="info-row">
           <div class="info-item">
@@ -80,7 +78,6 @@
 
     <!-- 操作记录 -->
     <el-card style="margin-top: 20px">
-      <template #header><h3>操作记录</h3></template>
       <el-timeline>
         <el-timeline-item timestamp="采购单创建" placement="top" color="#409EFF">
           <el-card>
@@ -109,42 +106,40 @@
 import { ref, computed, onMounted } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { ElMessage } from 'element-plus'
-import { useDataStore } from '@/stores/data'
+import { purchaseApi } from '@/api'
 import { formatTime } from '@/utils/time'
 
 const router = useRouter()
 const route = useRoute()
-const dataStore = useDataStore()
 
 const inboundId = computed(() => route.params.id)
 const inbound = ref(null)
 
-// 仓库列表
-const warehousesList = computed(() => dataStore.warehouses || [])
-
-// 动态获取仓库名称 - 从仓库列表中根据warehouseId查找
+// 仓库名称以入库详情返回为准
 const getWarehouseName = (warehouseId) => {
-  const warehouse = warehousesList.value.find(w => w.id === warehouseId)
-  return warehouse?.name || ''
+  if (!inbound.value || inbound.value.warehouseId !== warehouseId) return ''
+  return inbound.value.warehouseName || inbound.value.warehouse || ''
 }
 
-// 通过 supplierId 获取最新的供应商名称
+// 供应商名称以入库详情返回为准
 const supplierDisplayName = computed(() => {
   if (!inbound.value) return ''
-  // 如果有 supplierId，从供应商列表中获取最新的名称
-  if (inbound.value.supplierId) {
-    const supplier = dataStore.suppliers.find(s => s.id === inbound.value.supplierId)
-    if (supplier) return supplier.name
-  }
-  // 否则使用存储的名称
   return inbound.value.supplierName || inbound.value.supplier
 })
 
 onMounted(async () => {
-  await dataStore.loadSuppliers()
-  await dataStore.loadWarehouses()
-  await dataStore.loadInboundRecords()
-  inbound.value = dataStore.inboundRecords.find(i => i.id === Number(inboundId.value))
+  const id = Number(inboundId.value)
+  if (!id) {
+    ElMessage.warning('入库单 ID 无效')
+    router.replace('/purchase')
+    return
+  }
+  try {
+    inbound.value = await purchaseApi.inboundGet(id)
+  } catch (e) {
+    ElMessage.error(e.message || '加载入库单失败')
+    router.replace('/purchase')
+  }
 })
 
 const goBack = () => router.back()
@@ -155,9 +150,8 @@ const printInbound = () => { ElMessage.success('打印入库单功能已触发')
 .inbound-detail {
   .card-header {
     display: flex;
-    justify-content: space-between;
+    justify-content: flex-end;
     align-items: center;
-    h3 { font-size: 18px; font-weight: 600; color: #303133; }
     .header-actions { display: flex; gap: 12px; }
   }
   .order-no { color: #E94560; font-family: monospace; &.success { color: #67C23A; } }

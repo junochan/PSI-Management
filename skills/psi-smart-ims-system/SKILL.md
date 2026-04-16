@@ -9,12 +9,12 @@ description: >-
 
 ## 功能与作用
 
-- **用户**：后台账号的增删改查；`all` 用于下拉选择等不分页场景；**头像** 通过 `POST /users/avatar`（`multipart/form-data`）上传，响应 `data.url` 写入用户资料的 `avatar` 字段（前端 `userApi.uploadAvatar`）。
+- **用户**：后台账号的增删改查；`all` 用于下拉选择等不分页场景；**头像** 通过 `POST /users/avatar`（`multipart/form-data`）上传，响应 `data.url` 写入用户资料的 `avatar` 字段。
 - **角色与权限**：维护角色，及 **角色-权限** 绑定（权限 id 数组）。
 - **操作日志**：按条件分页查询审计日志。
-- **util-encode**：后端提供的 **BCrypt 明文转哈希**（仅测试/运维，返回 **纯文本** 非 JSON Result）。
+- **util-encode**：服务端提供的 **BCrypt 明文转哈希**（仅测试/运维，返回 **纯文本** 非 JSON Result）。
 
-对应前端：系统设置相关页面（路由由 **`GET /auth/navigation`** 返回的动态路由注册，常见为 `/settings` 及子页、角色权限等）。
+适用于系统设置、账号权限管理与运维排障场景。
 
 ## CLI 调用
 
@@ -58,6 +58,55 @@ psims util-encode -p "plain-password"
 ```
 
 该命令直接打印服务端返回的 **多行文本**（明文 + BCrypt），与统一 `Result` JSON 不同。
+
+## 接口参数清单（按技能内接口）
+
+### 用户
+
+| 接口 | 路径参数 | Query 参数 | Body 参数 | 文件参数 |
+|------|----------|------------|-----------|----------|
+| `GET /users` | 无 | `page`,`size`,`sort`,`order`,`keyword`,`productId`,`warehouseId`,`customerId`,`supplierId`,`categoryName`,`productStatus`,`stagnantStatus`,`inboundStatus`,`payStatus`,`salesOrderStatus`,`aftersalesStatus`,`lastOutboundStart`,`lastOutboundEnd`,`lastInboundStart`,`lastInboundEnd`,`expectDateStart`,`expectDateEnd`,`createTimeStart`,`createTimeEnd`,`operatorName`（均可选） | 无 | 无 |
+| `GET /users/all` | 无 | 无 | 无 | 无 |
+| `GET /users/{id}` | `id`(必填) | 无 | 无 | 无 |
+| `POST /users` | 无 | 无 | `username`(必填),`name`(必填),`email`(可选),`phone`(可选),`roleId`(可选),`password`(可选),`status`(可选),`avatar`(可选) | 无 |
+| `PUT /users/{id}` | `id`(必填) | 无 | 同 `POST /users` 字段 | 无 |
+| `DELETE /users/{id}` | `id`(必填) | 无 | 无 | 无 |
+| `POST /users/avatar` | 无 | 无 | 无 | `file`(必填, 图片) |
+
+### 角色与权限
+
+| 接口 | 路径参数 | Query 参数 | Body 参数 | 文件参数 |
+|------|----------|------------|-----------|----------|
+| `GET /roles` | 无 | 无 | 无 | 无 |
+| `GET /roles/{id}` | `id`(必填) | 无 | 无 | 无 |
+| `POST /roles` | 无 | 无 | `name`(可选),`code`(可选),`description`(可选),`status`(可选) | 无 |
+| `PUT /roles/{id}` | `id`(必填) | 无 | 同 `POST /roles` 字段 | 无 |
+| `DELETE /roles/{id}` | `id`(必填) | 无 | 无 | 无 |
+| `GET /roles/{id}/permissions` | `id`(必填) | 无 | 无 | 无 |
+| `GET /roles/permissions` | 无 | 无 | 无 | 无 |
+| `PUT /roles/{id}/permissions` | `id`(必填) | 无 | `permissionIds`(必填, `number[]`) | 无 |
+
+### 日志与工具
+
+| 接口 | 路径参数 | Query 参数 | Body 参数 | 文件参数 |
+|------|----------|------------|-----------|----------|
+| `GET /logs` | 无 | `page`,`size`,`sort`,`order`,`keyword`,`productId`,`warehouseId`,`customerId`,`supplierId`,`categoryName`,`productStatus`,`stagnantStatus`,`inboundStatus`,`payStatus`,`salesOrderStatus`,`aftersalesStatus`,`lastOutboundStart`,`lastOutboundEnd`,`lastInboundStart`,`lastInboundEnd`,`expectDateStart`,`expectDateEnd`,`createTimeStart`,`createTimeEnd`,`operatorName`（均可选） | 无 | 无 |
+| `GET /util/encode` | 无 | `password`(必填) | 无 | 无 |
+
+CLI 参数对应：
+
+- 列表：`-q|--query <json>`
+- 写入 Body：`-d|--data <json>` 或 `-f|--file <path>`
+- 上传头像：`psims users upload-avatar --file <path>`
+- 密码加密：`psims util-encode -p <password>`
+
+字段级完整参数查询（CLI）：
+
+- `psims spec show users create`
+- `psims spec show users update`
+- `psims spec show roles create`
+- `psims spec show roles set-permissions`
+- `psims spec show logs`
 
 ## HTTP 对照
 

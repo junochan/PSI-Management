@@ -6,7 +6,6 @@
         <el-card>
           <template #header>
             <div class="card-header">
-              <h3>销售订单列表</h3>
               <div class="header-actions">
                 <el-select v-model="filterCustomer" placeholder="按客户筛选" clearable filterable style="width: 160px">
                   <el-option v-for="c in customers" :key="c.id" :label="c.name" :value="c.id" />
@@ -145,10 +144,7 @@
               <div class="customer-avatar">{{ c.type === '企业' ? '🏢' : '👤' }}</div>
               <div class="customer-info">
                 <h4>{{ c.name }}</h4>
-                <p>{{ c.type }}客户 · 会员等级：{{ c.vipLevel || '普通' }}</p>
-              </div>
-              <div class="customer-vip">
-                <el-tag :type="(c.vipLevel || '普通') === 'VIP' ? 'warning' : 'info'" effect="light">{{ c.vipLevel || '普通' }}</el-tag>
+                <p>{{ c.type }}客户</p>
               </div>
             </div>
             <div class="customer-stats">
@@ -183,7 +179,6 @@
         <el-card>
           <template #header>
             <div class="card-header">
-              <h3>售后工单</h3>
               <div class="header-actions">
                 <el-input v-model="aftersalesSearchKeyword" placeholder="搜索工单号、订单号、客户..." prefix-icon="Search" clearable style="width: 200px" />
                 <el-select v-model="aftersalesFilterStatus" placeholder="按状态筛选" clearable filterable style="width: 120px">
@@ -1524,7 +1519,7 @@ onMounted(async () => {
   }
   .stats-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 20px; margin-bottom: 24px; }
   .page-tabs { :deep(.el-tabs__header) { margin-bottom: 16px; } }
-  .card-header { display: flex; justify-content: space-between; align-items: center; h3 { font-size: 16px; font-weight: 600; color: #303133; } .header-actions { display: flex; align-items: center; gap: 16px; } }
+  .card-header { display: flex; justify-content: flex-end; align-items: center; .header-actions { display: flex; align-items: center; gap: 16px; } }
   .order-no { color: #E94560; font-family: monospace; &.warning { color: #E6A23C; } }
   .amount { font-weight: 600; color: #E94560; }
   .customer-cell { display: flex; align-items: center; gap: 12px;

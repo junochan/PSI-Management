@@ -3,7 +3,6 @@
     <el-card>
       <template #header>
         <div class="card-header">
-          <h3>商品详情</h3>
           <div class="header-actions">
             <el-button v-if="canProductEdit" type="primary" @click="editProduct">编辑</el-button>
             <el-button @click="goBack">返回</el-button>
@@ -50,14 +49,14 @@
 <script setup>
 import { ref, computed, onMounted } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
-import { useDataStore } from '@/stores/data'
+import { ElMessage } from 'element-plus'
 import { useUserStore } from '@/stores/user'
+import { productApi } from '@/api'
 import { formatTime } from '@/utils/time'
 import { parseProductImageUrls } from '@/utils/productImages'
 
 const router = useRouter()
 const route = useRoute()
-const dataStore = useDataStore()
 const userStore = useUserStore()
 
 const canProductEdit = computed(() => userStore.hasPermission('product:edit'))
@@ -82,11 +81,20 @@ const getProductIcon = (category) => {
   return iconMap[category] || '📦'
 }
 
-// 加载商品数据
+// 加载商品数据（单笔详情接口）
 const loadProduct = async () => {
-  await dataStore.loadProducts()
-  const products = dataStore.products || []
-  product.value = products.find(p => p.id === Number(productId.value))
+  const id = Number(productId.value)
+  if (!id) {
+    ElMessage.warning('商品 ID 无效')
+    router.replace('/products')
+    return
+  }
+  try {
+    product.value = await productApi.get(id)
+  } catch (e) {
+    ElMessage.error(e.message || '加载商品失败')
+    router.replace('/products')
+  }
 }
 
 // 编辑商品
@@ -106,13 +114,8 @@ onMounted(() => {
 .product-view-page {
   .card-header {
     display: flex;
-    justify-content: space-between;
+    justify-content: flex-end;
     align-items: center;
-    h3 {
-      font-size: 18px;
-      font-weight: 600;
-      color: #303133;
-    }
     .header-actions {
       display: flex;
       gap: 12px;

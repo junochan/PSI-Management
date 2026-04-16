@@ -71,6 +71,35 @@ import { authApi } from '@/api'
 import { registerLayoutRoutes, clearLayoutDynamicRoutes, resolveSafeHomePath } from '@/router/dynamic-routes'
 import router from '@/router'
 
+const REMEMBER_USER_KEY = 'rememberedUser'
+const REMEMBER_PWD_KEY = 'rememberedPassword'
+
+/** Base64 存储 UTF-8 密码（非加密，仅避免在存储里直接显示明文） */
+function encodeRememberedPassword(plain) {
+  try {
+    const bytes = new TextEncoder().encode(plain)
+    let bin = ''
+    bytes.forEach((b) => {
+      bin += String.fromCharCode(b)
+    })
+    return btoa(bin)
+  } catch {
+    return ''
+  }
+}
+
+function decodeRememberedPassword(encoded) {
+  if (!encoded) return ''
+  try {
+    const bin = atob(encoded)
+    const bytes = new Uint8Array(bin.length)
+    for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i)
+    return new TextDecoder().decode(bytes)
+  } catch {
+    return ''
+  }
+}
+
 const vueRouter = useRouter()
 const userStore = useUserStore()
 const navigationStore = useNavigationStore()
@@ -128,7 +157,11 @@ const handleLogin = async () => {
         ElMessage.success('登录成功！')
 
         if (loginForm.remember) {
-          localStorage.setItem('rememberedUser', loginForm.username)
+          localStorage.setItem(REMEMBER_USER_KEY, loginForm.username)
+          localStorage.setItem(REMEMBER_PWD_KEY, encodeRememberedPassword(loginForm.password))
+        } else {
+          localStorage.removeItem(REMEMBER_USER_KEY)
+          localStorage.removeItem(REMEMBER_PWD_KEY)
         }
 
         const safe = resolveSafeHomePath(navigationStore, router)
@@ -149,11 +182,15 @@ const handleLogin = async () => {
   })
 }
 
-// 初始化时检查记住的用户名
-const rememberedUser = localStorage.getItem('rememberedUser')
+// 初始化：恢复记住的账号与密码（退出登录不会清这两项，仅清 token / userInfo）
+const rememberedUser = localStorage.getItem(REMEMBER_USER_KEY)
+const rememberedPwd = localStorage.getItem(REMEMBER_PWD_KEY)
 if (rememberedUser) {
   loginForm.username = rememberedUser
   loginForm.remember = true
+}
+if (rememberedPwd) {
+  loginForm.password = decodeRememberedPassword(rememberedPwd)
 }
 </script>
 

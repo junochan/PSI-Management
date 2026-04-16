@@ -41,7 +41,6 @@ public class CategoryServiceImpl implements CategoryService {
     public List<SysCategory> getAllCategories() {
         LambdaQueryWrapper<SysCategory> queryWrapper = new LambdaQueryWrapper<>();
         queryWrapper.eq(SysCategory::getDeleted, 0);
-        queryWrapper.eq(SysCategory::getStatus, 1);
         queryWrapper.orderByAsc(SysCategory::getSort);
         return sysCategoryMapper.selectList(queryWrapper);
     }
@@ -58,8 +57,13 @@ public class CategoryServiceImpl implements CategoryService {
     @Override
     @Transactional(rollbackFor = Exception.class)
     public void createCategory(CategoryDTO dto) {
+        String categoryName = normalizeCategoryName(dto.getName());
+        if (categoryNameExists(categoryName, null)) {
+            throw new BusinessException("分类名称已存在");
+        }
+
         SysCategory category = new SysCategory();
-        category.setName(dto.getName());
+        category.setName(categoryName);
         category.setParentId(dto.getParentId() != null ? dto.getParentId() : 0L);
         category.setSort(dto.getSort() != null ? dto.getSort() : 0);
         category.setStatus(dto.getStatus() != null ? dto.getStatus() : 1);
@@ -121,13 +125,35 @@ public class CategoryServiceImpl implements CategoryService {
         return sysCategoryMapper.selectCount(w) > 0;
     }
 
+    private boolean categoryNameExists(String name, Long excludeId) {
+        LambdaQueryWrapper<SysCategory> w = new LambdaQueryWrapper<>();
+        w.eq(SysCategory::getName, name);
+        w.eq(SysCategory::getDeleted, 0);
+        if (excludeId != null) {
+            w.ne(SysCategory::getId, excludeId);
+        }
+        return sysCategoryMapper.selectCount(w) > 0;
+    }
+
+    private String normalizeCategoryName(String name) {
+        String normalizedName = name == null ? null : name.trim();
+        if (!StringUtils.hasText(normalizedName)) {
+            throw new BusinessException("分类名称不能为空");
+        }
+        return normalizedName;
+    }
+
     @Override
     @Transactional(rollbackFor = Exception.class)
     public void updateCategory(Long id, CategoryDTO dto) {
         SysCategory category = getCategoryById(id);
 
         if (dto.getName() != null) {
-            category.setName(dto.getName());
+            String categoryName = normalizeCategoryName(dto.getName());
+            if (categoryNameExists(categoryName, id)) {
+                throw new BusinessException("分类名称已存在");
+            }
+            category.setName(categoryName);
         }
         if (dto.getCode() != null) {
             String newCode = dto.getCode().trim();

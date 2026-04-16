@@ -15,7 +15,7 @@ description: >-
 - **其它出入库**：简单参数走 `inbound-simple` / `outbound-simple`；复杂业务走 `inbound-new`。
 - **以图搜图**：与商品类似，对库存维度做向量检索（耗时长）。
 
-对应前端：`/inventory`、库存详情、调拨详情。
+适用于库存详情、调拨详情、预警处理与出入库场景。
 
 ## CLI 调用
 
@@ -60,6 +60,65 @@ psims inventory set-safe-stock 1 --safe-stock 100
 psims inventory set-location 1 --location "A-01"
 psims inventory set-stagnant-days 1 --days 90
 ```
+
+## 接口参数清单（按技能内接口）
+
+### 库存主数据与检索
+
+| 接口 | 路径参数 | Query 参数 | Body 参数 | 文件参数 |
+|------|----------|------------|-----------|----------|
+| `GET /inventory` | 无 | `page`,`size`,`sort`,`order`,`keyword`,`productId`,`warehouseId`,`customerId`,`supplierId`,`categoryName`,`productStatus`,`stagnantStatus`,`inboundStatus`,`payStatus`,`salesOrderStatus`,`aftersalesStatus`,`lastOutboundStart`,`lastOutboundEnd`,`lastInboundStart`,`lastInboundEnd`,`expectDateStart`,`expectDateEnd`,`createTimeStart`,`createTimeEnd`,`operatorName`（均可选） | 无 | 无 |
+| `GET /inventory/{id}` | `id`(必填) | 无 | 无 | 无 |
+| `GET /inventory/product/{productId}` | `productId`(必填) | 无 | 无 | 无 |
+| `POST /inventory/search-by-image` | 无 | 无 | `page`(可选),`size`(可选),`keyword`(可选),`productId`(可选),`warehouseId`(可选),`stagnantStatus`(可选),`lastOutboundStart`(可选),`lastOutboundEnd`(可选),`lastInboundStart`(可选),`lastInboundEnd`(可选),`imageBase64`(必填),`similarityThreshold`(可选) | 无 |
+| `GET /inventory/stats` | 无 | 无 | 无 | 无 |
+| `GET /inventory/outbounds` | 无 | `page`,`size`,`sort`,`order`,`keyword`,`productId`,`warehouseId`,`customerId`,`supplierId`,`categoryName`,`productStatus`,`stagnantStatus`,`inboundStatus`,`payStatus`,`salesOrderStatus`,`aftersalesStatus`,`lastOutboundStart`,`lastOutboundEnd`,`lastInboundStart`,`lastInboundEnd`,`expectDateStart`,`expectDateEnd`,`createTimeStart`,`createTimeEnd`,`operatorName`（均可选） | 无 | 无 |
+
+### 调拨与预警
+
+| 接口 | 路径参数 | Query 参数 | Body 参数 | 文件参数 |
+|------|----------|------------|-----------|----------|
+| `GET /inventory/transfers` | 无 | `page`,`size`,`sort`,`order`,`keyword`,`productId`,`warehouseId`,`customerId`,`supplierId`,`categoryName`,`productStatus`,`stagnantStatus`,`inboundStatus`,`payStatus`,`salesOrderStatus`,`aftersalesStatus`,`lastOutboundStart`,`lastOutboundEnd`,`lastInboundStart`,`lastInboundEnd`,`expectDateStart`,`expectDateEnd`,`createTimeStart`,`createTimeEnd`,`operatorName`（均可选） | 无 | 无 |
+| `POST /inventory/transfers` | 无 | 无 | `productId`(必填),`fromWarehouseId`(必填),`toWarehouseId`(必填),`quantity`(必填),`remark`(可选) | 无 |
+| `PUT /inventory/transfers/{id}/confirm` | `id`(必填) | 无 | 无 | 无 |
+| `GET /inventory/warnings` | 无 | `page`,`size`,`sort`,`order`,`keyword`,`productId`,`warehouseId`,`customerId`,`supplierId`,`categoryName`,`productStatus`,`stagnantStatus`,`inboundStatus`,`payStatus`,`salesOrderStatus`,`aftersalesStatus`,`lastOutboundStart`,`lastOutboundEnd`,`lastInboundStart`,`lastInboundEnd`,`expectDateStart`,`expectDateEnd`,`createTimeStart`,`createTimeEnd`,`operatorName`（均可选） | 无 | 无 |
+| `PUT /inventory/warnings/{id}/handle` | `id`(必填) | `handleRemark`(必填) | 无 | 无 |
+
+### 出入库与属性维护
+
+| 接口 | 路径参数 | Query 参数 | Body 参数 | 文件参数 |
+|------|----------|------------|-----------|----------|
+| `POST /inventory/inbound` | 无 | `inventoryId`(必填), `quantity`(必填), `remark`(可选) | 无 | 无 |
+| `POST /inventory/outbound` | 无 | `inventoryId`(必填), `quantity`(必填), `remark`(可选) | 无 | 无 |
+| `POST /inventory/inbound/new` | 无 | 无 | `productId`(必填),`warehouseId`(必填),`quantity`(必填),`remark`(可选) | 无 |
+| `PUT /inventory/{id}/safe-stock` | `id`(必填) | `safeStock`(必填) | 无 | 无 |
+| `PUT /inventory/{id}/location` | `id`(必填) | `location`(必填) | 无 | 无 |
+| `PUT /inventory/{id}/stagnant-days` | `id`(必填) | `stagnantDays`(必填) | 无 | 无 |
+
+CLI 参数对应：
+
+- 列表：`-q|--query <json>`
+- Body：`-d|--data <json>` 或 `-f|--file <path>`
+- 预警处理：`psims inventory warnings handle <id> --remark <text>`
+- 简单出入库：`--inventory-id`, `--quantity`, `--remark`
+
+字段级完整参数查询（CLI）：
+
+- `psims spec show inventory list`
+- `psims spec show inventory search-image`
+- `psims spec show inventory transfers create`
+- `psims spec show inventory warnings handle`
+- `psims spec show inventory inbound-new`
+
+## 写操作执行规范（必须）
+
+涉及库存变更的操作（`transfers create/confirm`、`warnings handle`、`inbound-simple`、`outbound-simple`、`inbound-new`、`set-safe-stock`、`set-location`、`set-stagnant-days`）必须遵循：
+
+1. 先确认并补齐必填字段（如库存/商品/仓库标识、数量、方向、调拨目标、处理备注等）。
+2. 信息不完整时先引导用户补齐，禁止直接执行写命令。
+3. 执行前输出变更摘要（目标库存行、关键参数、预期增减与影响范围）。
+4. 仅在用户明确确认后再执行。
+5. 出库、调拨确认、预警处理等高影响操作需再次提示影响后再执行。
 
 ## HTTP 对照（节选）
 

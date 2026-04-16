@@ -15,7 +15,6 @@
         <el-card>
           <template #header>
             <div class="card-header">
-              <h3>采购订单列表</h3>
               <div class="header-actions">
                 <el-select v-model="filterSupplier" placeholder="按供应商筛选" clearable filterable style="width: 160px">
                   <el-option v-for="s in suppliersList" :key="s.id" :label="s.name" :value="s.id" />
@@ -165,7 +164,6 @@
         <el-card>
           <template #header>
             <div class="card-header">
-              <h3>入库记录</h3>
               <div class="header-actions">
                 <el-date-picker
                   v-model="filterInboundTimeRange"
@@ -1198,8 +1196,7 @@ onMounted(() => {
   }
 
   .card-header {
-    display: flex; justify-content: space-between; align-items: center;
-    h3 { font-size: 16px; font-weight: 600; color: #303133; }
+    display: flex; justify-content: flex-end; align-items: center;
     .header-actions { display: flex; align-items: center; gap: 16px; }
   }
 

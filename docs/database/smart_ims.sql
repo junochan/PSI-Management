@@ -14,6 +14,12 @@
  Date: 15/04/2026 14:55:02
 */
 
+CREATE DATABASE IF NOT EXISTS `smart_ims`
+DEFAULT CHARACTER SET utf8mb4
+DEFAULT COLLATE utf8mb4_unicode_ci;
+
+USE `smart_ims`;
+
 SET NAMES utf8mb4;
 SET FOREIGN_KEY_CHECKS = 0;
 
@@ -605,6 +611,30 @@ INSERT INTO `sys_category` VALUES (26, '儿童袜子', 'CAT2604140007', 0, 7, 1,
 INSERT INTO `sys_category` VALUES (27, '儿童帽子', 'CAT2604140008', 0, 8, 1, '2026-04-14 10:56:14', '2026-04-14 10:56:14', 0);
 
 -- ----------------------------
+-- Table structure for sys_config
+-- ----------------------------
+DROP TABLE IF EXISTS `sys_config`;
+CREATE TABLE `sys_config`  (
+  `id` bigint NOT NULL AUTO_INCREMENT COMMENT '配置主键ID',
+  `config_key` varchar(64) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NOT NULL COMMENT '配置键',
+  `config_value` varchar(1000) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NULL DEFAULT NULL COMMENT '配置值',
+  `create_time` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+  `update_time` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+  `deleted` tinyint NOT NULL DEFAULT 0 COMMENT '逻辑删除：0-未删除，1-已删除',
+  PRIMARY KEY (`id`) USING BTREE,
+  UNIQUE INDEX `uk_config_key`(`config_key` ASC) USING BTREE
+) ENGINE = InnoDB AUTO_INCREMENT = 6 CHARACTER SET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci COMMENT = '系统配置表' ROW_FORMAT = Dynamic;
+
+-- ----------------------------
+-- Records of sys_config
+-- ----------------------------
+INSERT INTO `sys_config` VALUES (1, 'companyName', '深圳华创科技有限公司', '2026-04-16 10:00:00', '2026-04-16 10:00:00', 0);
+INSERT INTO `sys_config` VALUES (2, 'phone', '0755-88888888', '2026-04-16 10:00:00', '2026-04-16 10:00:00', 0);
+INSERT INTO `sys_config` VALUES (3, 'address', '深圳市南山区科技园', '2026-04-16 10:00:00', '2026-04-16 10:00:00', 0);
+INSERT INTO `sys_config` VALUES (4, 'stockWarning', '开启', '2026-04-16 10:00:00', '2026-04-16 10:00:00', 0);
+INSERT INTO `sys_config` VALUES (5, 'staleDays', '90', '2026-04-16 10:00:00', '2026-04-16 10:00:00', 0);
+
+-- ----------------------------
 -- Table structure for sys_operation_log
 -- ----------------------------
 DROP TABLE IF EXISTS `sys_operation_log`;
@@ -1013,11 +1043,7 @@ CREATE TABLE `sys_user`  (
   `create_time` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
   `update_time` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
   `deleted` tinyint NOT NULL DEFAULT 0 COMMENT '逻辑删除：0-未删除，1-已删除',
-  PRIMARY KEY (`id`) USING BTREE,
-  UNIQUE INDEX `uk_username`(`username` ASC) USING BTREE,
-  UNIQUE INDEX `uk_email`(`email` ASC) USING BTREE,
-  INDEX `idx_role_id`(`role_id` ASC) USING BTREE,
-  INDEX `idx_status`(`status` ASC) USING BTREE
+  PRIMARY KEY (`id`) USING BTREE
 ) ENGINE = InnoDB AUTO_INCREMENT = 7 CHARACTER SET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci COMMENT = '系统用户表' ROW_FORMAT = Dynamic;
 
 -- ----------------------------
@@ -1051,7 +1077,6 @@ CREATE TABLE `warehouse`  (
   `update_time` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
   `deleted` tinyint NOT NULL DEFAULT 0 COMMENT '逻辑删除：0-未删除，1-已删除',
   PRIMARY KEY (`id`) USING BTREE,
-  UNIQUE INDEX `uk_name`(`name` ASC) USING BTREE,
   INDEX `idx_status`(`status` ASC) USING BTREE
 ) ENGINE = InnoDB AUTO_INCREMENT = 5 CHARACTER SET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci COMMENT = '仓库表' ROW_FORMAT = Dynamic;
 

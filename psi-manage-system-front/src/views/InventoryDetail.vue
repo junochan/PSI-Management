@@ -3,7 +3,6 @@
     <el-card>
       <template #header>
         <div class="card-header">
-          <h3>库存详情</h3>
           <el-button @click="goBack">返回</el-button>
         </div>
       </template>
@@ -309,15 +308,13 @@
 import { ref, computed, onMounted } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { ElMessage } from 'element-plus'
-import { useDataStore } from '@/stores/data'
 import { useUserStore } from '@/stores/user'
-import { inventoryApi, purchaseApi, salesApi } from '@/api'
+import { inventoryApi, purchaseApi, salesApi, productApi, warehouseApi, supplierApi, categoryApi } from '@/api'
 import { formatTime } from '@/utils/time'
 import { firstProductImageUrl } from '@/utils/productImages'
 
 const router = useRouter()
 const route = useRoute()
-const dataStore = useDataStore()
 const userStore = useUserStore()
 
 const hasInventoryMenu = computed(() => userStore.hasPermission('inventory'))
@@ -351,16 +348,14 @@ const stockOutboundType = ref('sales')
 
 // 库存数据
 const stock = ref(null)
-
-// 计算属性
-const products = computed(() => dataStore.products || [])
-const warehousesList = computed(() => dataStore.warehouses || [])
-const categoriesList = computed(() => dataStore.categories || [])
-const suppliersList = computed(() => dataStore.suppliers || [])
-const purchaseOrders = computed(() => dataStore.purchaseOrders || [])
-const salesOrders = computed(() => dataStore.salesOrders || [])
-const inboundRecords = computed(() => dataStore.inboundRecords || [])
-const outboundRecords = computed(() => dataStore.outboundRecords || [])
+const products = ref([])
+const warehousesList = ref([])
+const categoriesList = ref([])
+const suppliersList = ref([])
+const purchaseOrders = ref([])
+const salesOrders = ref([])
+const inboundRecords = ref([])
+const outboundRecords = ref([])
 
 // 入库记录
 const stockInboundRecords = computed(() => {
@@ -488,26 +483,26 @@ const purchaseRules = {
 
 // 工具函数
 const getProductImage = (productId) => {
-  const product = products.value.find(p => p.id === productId)
+  const product = (products.value || []).find(p => p.id === productId)
   return firstProductImageUrl(product?.image)
 }
 
 // 获取商品名称（从商品列表动态获取最新名称）
 const getProductName = (productId, fallbackName) => {
-  const product = products.value.find(p => p.id === productId)
+  const product = (products.value || []).find(p => p.id === productId)
   return product?.name || fallbackName || '-'
 }
 
 const getWarehouseName = (warehouseId) => {
-  const warehouse = warehousesList.value.find(w => w.id === warehouseId)
+  const warehouse = (warehousesList.value || []).find(w => w.id === warehouseId)
   return warehouse?.name || ''
 }
 
 const getCategoryName = (productId) => {
-  const product = products.value.find(p => p.id === productId)
+  const product = (products.value || []).find(p => p.id === productId)
   if (product) {
     if (product.categoryId) {
-      const category = categoriesList.value.find(c => c.id === product.categoryId)
+      const category = (categoriesList.value || []).find(c => c.id === product.categoryId)
       return category?.name || product.categoryName || product.category || ''
     }
     return product.categoryName || product.category || ''
@@ -550,15 +545,47 @@ const getStagnantStatusText = (stockData) => {
   return `正常`
 }
 
-// 加载数据（与库存页一致：无出入库记录权限不拉流水接口）
+// 加载数据（与库存页一致：无出入库记录权限不拉流水接口）；当前库存行用单笔详情接口
 const loadData = async () => {
+  const loadProducts = async () => {
+    const res = await productApi.list({ page: 1, size: 500 })
+    products.value = res.list || []
+  }
+  const loadWarehouses = async () => {
+    const res = await warehouseApi.list({ page: 1, size: 200 })
+    warehousesList.value = res.list || []
+  }
+  const loadCategories = async () => {
+    const res = await categoryApi.list()
+    categoriesList.value = Array.isArray(res) ? res : []
+  }
+  const loadSuppliers = async () => {
+    const res = await supplierApi.list({ page: 1, size: 200 })
+    suppliersList.value = res.list || []
+  }
+  const loadPurchaseOrders = async () => {
+    const res = await purchaseApi.list({ page: 1, size: 500 })
+    purchaseOrders.value = res.list || []
+  }
+  const loadSalesOrders = async () => {
+    const res = await salesApi.list({ page: 1, size: 500 })
+    salesOrders.value = res.list || []
+  }
+  const loadInboundRecords = async () => {
+    const res = await purchaseApi.inboundList({ page: 1, size: 500 })
+    inboundRecords.value = res.list || []
+  }
+  const loadOutboundRecords = async () => {
+    const res = await inventoryApi.outboundList({ page: 1, size: 500 })
+    outboundRecords.value = res.list || []
+  }
+
   const tasks = [
-    dataStore.loadInventory(),
-    dataStore.loadProducts(),
-    dataStore.loadWarehouses(),
-    dataStore.loadCategories(),
-    dataStore.loadSuppliers(),
-    dataStore.loadPurchaseOrders()
+    loadProducts(),
+    loadWarehouses(),
+    loadCategories(),
+    loadSuppliers(),
+    loadPurchaseOrders()
   ]
   if (
     canInventoryRecordsTab.value ||
@@ -566,16 +593,26 @@ const loadData = async () => {
     userStore.hasPermission('sales') ||
     userStore.hasPermission('sales:view')
   ) {
-    tasks.push(dataStore.loadSalesOrders())
+    tasks.push(loadSalesOrders())
   }
   if (canInventoryRecordsTab.value) {
-    tasks.push(dataStore.loadInboundRecords(), dataStore.loadOutboundRecords())
+    tasks.push(loadInboundRecords(), loadOutboundRecords())
   }
   await Promise.all(tasks)
 
-  // 查找库存数据
-  const inventoryData = dataStore.inventoryData || []
-  stock.value = inventoryData.find(i => i.id === Number(stockId.value))
+  const id = Number(stockId.value)
+  if (!id) {
+    ElMessage.warning('库存 ID 无效')
+    router.replace('/inventory')
+    return
+  }
+  try {
+    stock.value = await inventoryApi.get(id)
+  } catch (e) {
+    ElMessage.error(e.message || '加载库存失败')
+    router.replace('/inventory')
+    return
+  }
 
   if (stock.value) {
     stockSafeStockEdit.value = stock.value.safeStock || 10
@@ -591,8 +628,7 @@ const updateSafeStock = async () => {
   try {
     await inventoryApi.updateSafeStock(stock.value.id, stockSafeStockEdit.value)
     ElMessage.success('库存预警值已更新')
-    stock.value.safeStock = stockSafeStockEdit.value
-    await dataStore.loadInventory()
+    stock.value = await inventoryApi.get(stock.value.id)
   } catch (error) {
     ElMessage.error(error.message || '更新失败')
   } finally {
@@ -607,8 +643,7 @@ const updateLocation = async () => {
   try {
     await inventoryApi.updateLocation(stock.value.id, stockLocationEdit.value)
     ElMessage.success('库位已更新')
-    stock.value.location = stockLocationEdit.value
-    await dataStore.loadInventory()
+    stock.value = await inventoryApi.get(stock.value.id)
   } catch (error) {
     ElMessage.error(error.message || '更新失败')
   } finally {
@@ -623,8 +658,7 @@ const updateStagnantDays = async () => {
   try {
     await inventoryApi.updateStagnantDays(stock.value.id, stockStagnantDaysEdit.value)
     ElMessage.success('呆滞预警天数已更新')
-    stock.value.stagnantDays = stockStagnantDaysEdit.value
-    await dataStore.loadInventory()
+    stock.value = await inventoryApi.get(stock.value.id)
   } catch (error) {
     ElMessage.error(error.message || '更新失败')
   } finally {
@@ -634,7 +668,8 @@ const updateStagnantDays = async () => {
 
 // 打开入库对话框
 const openStockInbound = async () => {
-  await dataStore.loadPurchaseOrders()
+  const res = await purchaseApi.list({ page: 1, size: 500 })
+  purchaseOrders.value = res.list || []
   stockInboundType.value = 'purchase'
   stockInboundForm.value = {
     inventoryId: stock.value.id,
@@ -666,7 +701,8 @@ const openStockOutbound = async () => {
     ElMessage.warning('当前库存为0，无法出库')
     return
   }
-  await dataStore.loadSalesOrders()
+  const res = await salesApi.list({ page: 1, size: 500 })
+  salesOrders.value = res.list || []
   stockOutboundType.value = 'sales'
   stockOutboundForm.value = {
     inventoryId: stock.value.id,
@@ -694,7 +730,7 @@ const openStockOutbound = async () => {
 
 // 选择采购单时设置最大入库数量
 const onStockPurchaseOrderChange = (purchaseOrderId) => {
-  const po = purchaseOrders.value.find(p => p.id === purchaseOrderId)
+  const po = (purchaseOrders.value || []).find(p => p.id === purchaseOrderId)
   if (po) {
     const pendingQty = po.pendingQuantity || (po.totalQuantity || po.quantity || 0) - (po.inboundQuantity || 0)
     stockInboundForm.value.maxQuantity = pendingQty > 0 ? pendingQty : 1
@@ -704,7 +740,7 @@ const onStockPurchaseOrderChange = (purchaseOrderId) => {
 
 // 选择销售单时设置最大出库数量
 const onStockSalesOrderChange = (salesOrderId) => {
-  const so = salesOrders.value.find(s => s.id === salesOrderId)
+  const so = (salesOrders.value || []).find(s => s.id === salesOrderId)
   if (so) {
     const pendingQty = so.pendingQuantity || so.quantity || 1
     const currentStock = stockOutboundForm.value.currentStock || 0
@@ -810,7 +846,8 @@ const submitStockOutbound = async () => {
 
 // 打开采购对话框
 const openPurchaseFromStock = async () => {
-  await dataStore.loadSuppliers()
+  const res = await supplierApi.list({ page: 1, size: 200 })
+  suppliersList.value = res.list || []
   const product = products.value.find(p => p.id === stock.value.productId)
   purchaseForm.value = {
     productId: stock.value.productId,
@@ -877,13 +914,8 @@ onMounted(() => {
 .inventory-detail-page {
   .card-header {
     display: flex;
-    justify-content: space-between;
+    justify-content: flex-end;
     align-items: center;
-    h3 {
-      font-size: 18px;
-      font-weight: 600;
-      color: #303133;
-    }
   }
 
   .stock-product-image {

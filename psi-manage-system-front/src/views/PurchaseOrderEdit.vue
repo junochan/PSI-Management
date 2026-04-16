@@ -3,7 +3,6 @@
     <el-card>
       <template #header>
         <div class="card-header">
-          <h3>编辑采购单</h3>
           <div class="header-actions">
             <el-button @click="goBack">返回</el-button>
           </div>
@@ -97,13 +96,11 @@
 import { ref, computed, onMounted } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { ElMessage } from 'element-plus'
-import { useDataStore } from '@/stores/data'
-import { purchaseApi } from '@/api'
+import { productApi, purchaseApi, supplierApi } from '@/api'
 import { firstProductImageUrl } from '@/utils/productImages'
 
 const router = useRouter()
 const route = useRoute()
-const dataStore = useDataStore()
 const orderFormRef = ref()
 
 const orderId = computed(() => route.params.id)
@@ -131,13 +128,13 @@ const orderRules = {
   unitPrice: [{ required: true, message: '请输入单价', trigger: 'blur' }]
 }
 
-const suppliers = computed(() => dataStore.suppliers || [])
-const products = computed(() => dataStore.products || [])
+const suppliers = ref([])
+const products = ref([])
 
 // 选中商品的图片
 const selectedProductImage = computed(() => {
   if (!orderForm.value.productId) return null
-  const product = products.value.find(p => p.id === orderForm.value.productId)
+  const product = (products.value || []).find(p => p.id === orderForm.value.productId)
   return firstProductImageUrl(product?.image)
 })
 
@@ -155,7 +152,7 @@ const getInboundStatusType = (status) => ({ 'completed': 'success', 'partial': '
 
 // 商品选择变化时自动填充成本价
 const onProductChange = (productId) => {
-  const product = products.value.find(p => p.id === productId)
+  const product = (products.value || []).find(p => p.id === productId)
   if (product) {
     orderForm.value.unitPrice = product.costPrice || 0
     orderForm.value.productName = product.name
@@ -176,10 +173,20 @@ const updateQuantities = () => {
 }
 
 onMounted(async () => {
-  await dataStore.loadPurchaseOrders()
-  await dataStore.loadSuppliers()
-  await dataStore.loadProducts()
-  order.value = dataStore.purchaseOrders.find(o => o.id === Number(orderId.value))
+  const id = Number(orderId.value)
+  if (!id) {
+    ElMessage.warning('采购单 ID 无效')
+    router.replace('/purchase')
+    return
+  }
+  const [orderRes, supplierRes, productRes] = await Promise.all([
+    purchaseApi.get(id),
+    supplierApi.list({ page: 1, size: 200 }),
+    productApi.list({ page: 1, size: 500 })
+  ])
+  order.value = orderRes || null
+  suppliers.value = supplierRes?.list || []
+  products.value = productRes?.list || []
   if (order.value) {
     orderForm.value = {
       orderNo: order.value.orderNo,
@@ -212,7 +219,6 @@ const submitEdit = async () => {
           unitPrice: orderForm.value.unitPrice,
           remark: orderForm.value.remark
         })
-        await dataStore.loadPurchaseOrders()
         ElMessage.success('采购单已更新')
         router.push('/purchase')
       } catch (error) {
@@ -227,9 +233,8 @@ const submitEdit = async () => {
 .purchase-order-edit {
   .card-header {
     display: flex;
-    justify-content: space-between;
+    justify-content: flex-end;
     align-items: center;
-    h3 { font-size: 18px; font-weight: 600; color: #303133; }
     .header-actions { display: flex; gap: 12px; }
   }
 

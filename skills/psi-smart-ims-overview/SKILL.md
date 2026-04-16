@@ -2,16 +2,16 @@
 name: psi-smart-ims-overview
 description: >-
   智链进销存 smart-ims 全局说明：在 Linux 环境下使用 psims CLI（安装、全局参数）、JWT、API 基址、统一响应与技能索引；仪表盘业务说明见独立技能 psi-smart-ims-dashboard。
-  当用户在 Linux 服务器/容器、OpenClaw 或 CI 中通过命令行操作后端、脚本化拉数、或替代手写 curl 调用 /api/v1 时使用本技能。
+  当用户在 Linux 服务器/容器、OpenClaw 或 CI 中通过命令行操作系统 API、脚本化拉数、或替代手写 curl 调用 /api/v1 时使用本技能。
 ---
 
 # 智链进销存总览（API + CLI）
 
 ## 能力与作用
 
-业务侧提供 **HTTP JSON API**（Spring Boot）与前端（Vue）。**本技能自带 `psims` CLI 全部源码**（与本 `SKILL.md` 同级的 `psi-cli/`），**不依赖仓库其它目录**；单独拷贝 `psi-smart-ims-overview/` 即可安装运行。
+业务侧提供 **HTTP JSON API**。**本技能自带 `psims` CLI 全部源码**（与本 `SKILL.md` 同级的 `psi-cli/`），**不依赖仓库其它目录**；单独拷贝 `psi-smart-ims-overview/` 即可安装运行。
 
-- 在终端或自动化脚本中完成与 Web 前端相同的业务操作（需登录后的 JWT）。
+- 在终端或自动化脚本中完成与 Web 系统一致的业务操作（需登录后的 JWT）。
 - 由 OpenClaw / Agent 通过「读技能 + 执行命令」完成调用，避免手写 URL 与 Header。
 
 ### 目录结构（自包含）
@@ -76,11 +76,11 @@ cd psi-cli && npm install && npm link
 2. 默认将返回的 JWT 写入 **`$HOME/.psi-smart-ims/token`**（与运行用户一致；容器内需保证该目录可写）。
 3. 后续子命令自动从该文件读取 token；也可用 `--token` 或 `PSI_TOKEN` 覆盖。
 4. `psims auth token-path` 可打印 token 文件绝对路径。
-5. `psims auth logout` 会调用后端登出并删除本地 token 文件。
+5. `psims auth logout` 会调用登出接口并删除本地 token 文件。
 
 ### 列表与查询参数
 
-多数 `list` 子命令支持 `-q / --query`，值为 **JSON 字符串**，会作为 URL 查询参数发送（与前端 `params` 一致），例如：
+多数 `list` 子命令支持 `-q / --query`，值为 **JSON 字符串**，会作为 URL 查询参数发送，例如：
 
 ```bash
 # Bash 下可用单引号包住 JSON，避免转义双引号
@@ -94,24 +94,99 @@ psims products list -q '{"current":1,"size":10}'
 - `-d / --data '<json>'`：内联 JSON；
 - `-f / --file <path>`：从文件读取 JSON（适合大 Body）。
 
+### 写操作执行前（强制）
+
+凡是会修改进销存数据的命令（如 `create`、`update`、`delete`、`batch-delete`、`cancel`、`confirm`、`inbound`、`outbound`、`payment`、`shipping`、`received`、`handle`、`close`）都必须遵循以下流程：
+
+1. **先识别必填字段**：根据对应子技能和命令参数，列出本次操作的必填项（例如 `id`、数量、仓库/商品/客户/供应商、业务原因或备注等）。
+2. **缺字段先补齐**：若用户未提供完整必填信息，先引导用户逐项填写，禁止直接调用写接口。
+3. **执行前二次确认**：整理一份“执行摘要”（对象、关键字段、预期影响），明确询问“是否确认执行”。
+4. **收到明确确认才执行**：仅在用户给出明确同意（如“确认执行”）后发起写请求；若未确认或改口，停止执行并回到信息补齐。
+5. **高风险操作加强确认**：删除、批量删除、取消、关单、出库、扣减库存等不可逆/高影响操作，需再次强调影响范围后再执行。
+
 ### 与 HTTP 的对应关系
 
-CLI 子命令名与 `psi-manage-system-front/src/api/index.js` 中的封装 **大体** 对应；底层即对 `GET/POST/PUT/DELETE http(s)://<host>:8080/api/v1/...` 发请求。
+CLI 子命令名与各业务接口路径一一对应；底层即对 `GET/POST/PUT/DELETE http(s)://<host>:8080/api/v1/...` 发请求。
 
-**与前端 `authApi`（`navigation`、`ssoLogin`、`changePassword`）、`supplierIndustryApi`、`userApi.uploadAvatar` 对齐的命令**（除登录类接口外需 Bearer，先 `auth login` 或 `auth sso-login`）；**仪表盘**见技能 **`psi-smart-ims-dashboard`**。
+以下是常用命令入口（除登录类接口外需 Bearer，先 `auth login` 或 `auth sso-login`）；**仪表盘**见技能 **`psi-smart-ims-dashboard`**。
 
 ```bash
 psims auth navigation
-psims auth sso-login --key "<与后端 app.sso-bypass.secret 一致的密钥>"
+psims auth sso-login --key "<与服务端共享配置一致的密钥>"
 psims auth change-password -d "{\"currentPassword\":\"旧\",\"newPassword\":\"新密码至少6位\"}"
 psims supplier-industries
 psims warehouses options
 psims users upload-avatar --file ./avatar.png
 ```
 
-## 后端与路径（直连 HTTP 时）
+### 总览技能接口参数清单（本技能覆盖的通用接口）
 
-- **端口**：默认 `8080`（`application.yml`）
+> 业务域接口（商品/库存/采购/销售等）参数已在对应子技能中完整展开；本节仅列总览中直接示例和通用入口。
+
+| 接口 | 路径参数 | Query 参数 | Body 参数 | 文件参数 |
+|------|----------|------------|-----------|----------|
+| `POST /auth/sso-login` | 无 | 无 | `key`(必填) | 无 |
+| `GET /auth/navigation` | 无 | 无 | 无 | 无 |
+| `POST /auth/change-password` | 无 | 无 | `currentPassword`(必填), `newPassword`(必填) | 无 |
+| `GET /supplier-industries` | 无 | 无 | 无 | 无 |
+| `GET /warehouses/options` | 无 | 无 | 无 | 无 |
+| `POST /users/avatar` | 无 | 无 | 无 | `file`(必填, 图片) |
+
+通用 CLI 参数（所有接口适用）：
+
+- 根命令：`--base-url <url>`、`--token <jwt>`、`--timeout <ms>`
+- 列表查询：`-q|--query <json>`
+- JSON Body：`-d|--data <json>` 或 `-f|--file <path>`
+- multipart：`--file <path>`
+
+### CLI 参数自查（字段级完整参数）
+
+为了保证「每个命令对应接口参数可查且完整」，`psims` 提供了参数规范查询命令：
+
+```bash
+# 列出全部命令 -> 接口映射
+psims spec list
+
+# 关键字筛选（命令名或路径）
+psims spec list -q products
+
+# 查看某个命令的完整参数（路径/query/body/file，含必填）
+psims spec show products create
+psims spec show sales orders shipping
+psims spec show inventory warnings handle
+```
+
+约定：技能文档与 `psims spec show ...` 输出保持一致；当你需要字段级细节时，以 `spec show` 为准。
+
+### 参数兜底方案（Swagger）
+
+当出现以下情况时，使用 Swagger 文档作为兜底真值源：
+
+- 线上接口字段与技能文档不一致
+- `psims spec show ...` 输出与实际返回校验冲突
+- 新增接口/字段尚未同步到技能
+
+Swagger 地址（相对服务根）：
+
+```text
+/api/v3/api-docs
+```
+
+例如服务地址为 `http://localhost:8080` 时，完整地址为：
+
+```text
+http://localhost:8080/api/v3/api-docs
+```
+
+执行顺序建议：
+
+1. 先看技能文档参数表。
+2. 再看 `psims spec show <命令>`。
+3. 仍有冲突时，以 `/api/v3/api-docs` 为最终依据。
+
+## 服务地址与路径（直连 HTTP 时）
+
+- **端口**：默认 `8080`
 - **context-path**：`/api`
 - **控制器前缀**：`/v1`
 - **完整根路径**：`http://<host>:8080/api/v1`
@@ -128,7 +203,7 @@ psims users upload-avatar --file ./avatar.png
 { "code": 200, "message": "...", "data": ... }
 ```
 
-成功时业务数据在 **`data`**；`psims` 在终端只打印解包后的 **`data`**（与前端 axios 拦截器行为一致）。
+成功时业务数据在 **`data`**；`psims` 在终端只打印解包后的 **`data`**。
 
 ## 技能索引（按业务）
 

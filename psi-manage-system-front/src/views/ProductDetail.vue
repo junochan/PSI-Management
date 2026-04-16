@@ -3,7 +3,6 @@
     <el-card>
       <template #header>
         <div class="card-header">
-          <h3>{{ editMode ? '编辑商品' : '添加商品' }}</h3>
           <el-button @click="goBack">返回</el-button>
         </div>
       </template>
@@ -30,7 +29,9 @@
           </div>
           <div class="image-tip">最多 10 张；支持 JPG、PNG、GIF、WEBP；选择后自动上传，仅保存图片地址</div>
         </el-form-item>
-        <el-form-item label="商品名称" prop="name"><el-input v-model="productForm.name" placeholder="输入商品名称" /></el-form-item>
+        <el-form-item label="商品名称" prop="name">
+          <el-input v-model="productForm.name" placeholder="输入商品名称" :maxlength="100" show-word-limit />
+        </el-form-item>
         <el-row :gutter="20">
           <el-col :span="12"><el-form-item label="商品分类" prop="categoryName"><el-select v-model="productForm.categoryName" placeholder="请选择分类" style="width: 100%" filterable><el-option v-for="c in categoriesList" :key="c.id" :label="c.name" :value="c.name" /></el-select></el-form-item></el-col>
           <el-col :span="12"><el-form-item label="商品编码"><el-input v-model="productForm.code" placeholder="系统自动生成" disabled /></el-form-item></el-col>
@@ -60,21 +61,19 @@
 import { ref, computed, onMounted } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { ElMessage } from 'element-plus'
-import { useDataStore } from '@/stores/data'
 import { useUserStore } from '@/stores/user'
-import { productApi } from '@/api'
+import { categoryApi, productApi } from '@/api'
 import { parseProductImageUrls, encodeProductImagesForApi } from '@/utils/productImages'
 
 const router = useRouter()
 const route = useRoute()
-const dataStore = useDataStore()
 const userStore = useUserStore()
 const productFormRef = ref()
 const imageUploading = ref(false)
+const categoriesList = ref([])
 
 const productId = computed(() => route.params.id)
 const editMode = computed(() => !!productId.value)
-const categoriesList = computed(() => dataStore.categories || [])
 
 const productForm = ref({
   name: '',
@@ -98,7 +97,10 @@ const productRules = {
       trigger: 'change'
     }
   ],
-  name: [{ required: true, message: '请输入商品名称', trigger: 'blur' }],
+  name: [
+    { required: true, message: '请输入商品名称', trigger: 'blur' },
+    { max: 100, message: '商品名称长度不能超过 100 个字符', trigger: 'blur' }
+  ],
   categoryName: [{ required: true, message: '请选择商品分类', trigger: 'change' }],
   costPrice: [{ required: true, message: '请输入成本价', trigger: 'blur' }],
   salePrice: [{ required: true, message: '请输入销售价', trigger: 'blur' }]
@@ -144,11 +146,16 @@ onMounted(async () => {
     router.replace(`/products/view/${productId.value}`)
     return
   }
-  await dataStore.loadProducts()
-  await dataStore.loadCategories()
+  categoriesList.value = await categoryApi.list()
   if (editMode.value) {
-    const product = dataStore.products.find(p => p.id === Number(productId.value))
-    if (product) {
+    const id = Number(productId.value)
+    if (!id) {
+      ElMessage.warning('商品 ID 无效')
+      router.replace('/products')
+      return
+    }
+    try {
+      const product = await productApi.get(id)
       productForm.value = {
         name: product.name,
         categoryName: product.categoryName || product.category,
@@ -161,6 +168,9 @@ onMounted(async () => {
         imageList: parseProductImageUrls(product.image),
         code: product.code
       }
+    } catch (e) {
+      ElMessage.error(e.message || '加载商品失败')
+      router.replace('/products')
     }
   }
 })
@@ -171,7 +181,7 @@ const submitProduct = async () => {
   await productFormRef.value.validate(async (valid) => {
     if (valid) {
       try {
-        const category = categoriesList.value.find(c => c.name === productForm.value.categoryName)
+        const category = (categoriesList.value || []).find(c => c.name === productForm.value.categoryName)
         const productDTO = {
           code: productForm.value.code || `P${Date.now()}`,
           name: productForm.value.name,
@@ -187,10 +197,10 @@ const submitProduct = async () => {
         }
 
         if (editMode.value) {
-          await dataStore.updateProduct(Number(productId.value), productDTO)
+          await productApi.update(Number(productId.value), productDTO)
           ElMessage.success('商品信息已更新')
         } else {
-          await dataStore.addProduct(productDTO)
+          await productApi.create(productDTO)
           ElMessage.success('商品添加成功')
         }
         router.push('/products')
@@ -206,13 +216,8 @@ const submitProduct = async () => {
 .product-detail-page {
   .card-header {
     display: flex;
-    justify-content: space-between;
+    justify-content: flex-end;
     align-items: center;
-    h3 {
-      font-size: 18px;
-      font-weight: 600;
-      color: #303133;
-    }
   }
 
   .product-images-editor {

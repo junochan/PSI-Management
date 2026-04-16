@@ -3,7 +3,6 @@
     <el-card>
       <template #header>
         <div class="card-header">
-          <h3>权限管理</h3>
           <el-button @click="goBack">返回</el-button>
         </div>
       </template>
@@ -35,7 +34,6 @@
             :data="permissionTree"
             show-checkbox
             node-key="id"
-            check-strictly
             default-expand-all
             :props="treeProps"
             @check="onTreeCheck"
@@ -151,9 +149,7 @@ const savePermissions = async () => {
 const loadData = async () => {
   loading.value = true
   try {
-    // 获取角色信息
-    const roles = await roleApi.list() || []
-    role.value = roles.find(r => r.id === Number(roleId.value))
+    role.value = await roleApi.get(Number(roleId.value))
 
     // 获取所有权限
     allPermissions.value = await roleApi.allPermissions() || []
@@ -170,8 +166,13 @@ const loadData = async () => {
   }
 }
 
-// 返回
-const goBack = () => router.back()
+// 返回到系统设置-角色管理页签
+const goBack = () => {
+  router.push({
+    path: '/settings',
+    query: { tab: 'roles' }
+  })
+}
 
 onMounted(() => {
   loadData()
@@ -182,13 +183,8 @@ onMounted(() => {
 .permission-page {
   .card-header {
     display: flex;
-    justify-content: space-between;
+    justify-content: flex-end;
     align-items: center;
-    h3 {
-      font-size: 18px;
-      font-weight: 600;
-      color: #303133;
-    }
   }
 
   .role-info {

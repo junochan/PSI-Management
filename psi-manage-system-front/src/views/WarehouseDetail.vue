@@ -3,7 +3,6 @@
     <el-card>
       <template #header>
         <div class="card-header">
-          <h3>仓库详情</h3>
           <div class="header-actions">
             <el-button type="primary" @click="editWarehouse">编辑仓库</el-button>
             <el-button @click="viewStock">查看库存</el-button>
@@ -33,7 +32,6 @@
 
     <!-- 仓库统计 -->
     <el-card style="margin-top: 20px">
-      <template #header><h3>仓库统计</h3></template>
       <div class="stats-grid">
         <div class="stat-item">
           <div class="stat-icon stat-icon--purple"><el-icon><Box /></el-icon></div>
@@ -70,7 +68,6 @@
     <el-card style="margin-top: 20px">
       <template #header>
         <div class="card-header">
-          <h3>库存商品</h3>
           <el-input v-model="searchKeyword" placeholder="搜索商品..." prefix-icon="Search" clearable style="width: 200px" />
         </div>
       </template>
@@ -100,18 +97,19 @@
 import { ref, computed, onMounted } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { ElMessage } from 'element-plus'
-import { useDataStore } from '@/stores/data'
+import { warehouseApi, inventoryApi } from '@/api'
 
 const router = useRouter()
 const route = useRoute()
-const dataStore = useDataStore()
 
 const warehouseId = computed(() => route.params.id)
 const warehouse = ref(null)
+const inventoryRows = ref([])
 const searchKeyword = ref('')
 
 const filteredStock = computed(() => {
-  const stock = dataStore.inventoryData.filter(i => i.warehouse?.includes(warehouse?.value?.name?.split('仓库')[0]))
+  const wid = Number(warehouseId.value)
+  const stock = inventoryRows.value.filter(i => Number(i.warehouseId) === wid)
   if (!searchKeyword.value) return stock
   return stock.filter(i => i.name.includes(searchKeyword.value) || i.sku.includes(searchKeyword.value))
 })
@@ -119,8 +117,21 @@ const filteredStock = computed(() => {
 const getStockStatusType = (status) => ({ '正常': 'success', '偏低': 'warning', '紧急补货': 'danger' }[status] || 'info')
 
 onMounted(async () => {
-  await dataStore.loadWarehouses()
-  warehouse.value = dataStore.warehouses.find(w => w.id === Number(warehouseId.value))
+  const id = Number(warehouseId.value)
+  if (!id) {
+    ElMessage.warning('仓库 ID 无效')
+    router.replace('/inventory')
+    return
+  }
+  try {
+    warehouse.value = await warehouseApi.get(id)
+  } catch (e) {
+    ElMessage.error(e.message || '加载仓库失败')
+    router.replace('/inventory')
+    return
+  }
+  const inv = await inventoryApi.list({ page: 1, size: 1000, warehouseId: id })
+  inventoryRows.value = inv.list || []
 })
 
 const goBack = () => router.back()
@@ -132,9 +143,8 @@ const viewStock = () => { router.push('/inventory') }
 .warehouse-detail {
   .card-header {
     display: flex;
-    justify-content: space-between;
+    justify-content: flex-end;
     align-items: center;
-    h3 { font-size: 18px; font-weight: 600; color: #303133; }
     .header-actions { display: flex; gap: 12px; }
   }
   .warehouse-name { font-weight: 600; color: #303133; }

@@ -67,18 +67,21 @@ public class UserServiceImpl implements UserService {
     @Override
     @Transactional(rollbackFor = Exception.class)
     public void addUser(UserDTO dto) {
+        String username = dto.getUsername().trim();
+        String name = dto.getName().trim();
+
         LambdaQueryWrapper<SysUser> queryWrapper = new LambdaQueryWrapper<>();
-        queryWrapper.eq(SysUser::getUsername, dto.getUsername().trim());
+        queryWrapper.eq(SysUser::getUsername, username);
         queryWrapper.eq(SysUser::getDeleted, 0);
         if (sysUserMapper.selectCount(queryWrapper) > 0) {
             throw new BusinessException("登录名已存在");
         }
 
         SysUser user = new SysUser();
-        user.setUsername(dto.getUsername().trim());
-        user.setName(dto.getName().trim());
-        user.setEmail(dto.getEmail());
-        user.setPhone(dto.getPhone());
+        user.setUsername(username);
+        user.setName(name);
+        user.setEmail(normalizeOptionalField(dto.getEmail()));
+        user.setPhone(normalizeOptionalField(dto.getPhone()));
         user.setRoleId(dto.getRoleId() != null ? dto.getRoleId() : 3L); // 默认销售专员
         user.setStatus(dto.getStatus() != null ? dto.getStatus() : 1);
 
@@ -90,9 +93,7 @@ public class UserServiceImpl implements UserService {
             user.setPassword(passwordEncoder.encode("123456"));
         }
 
-        if (StringUtils.hasText(dto.getAvatar())) {
-            user.setAvatar(dto.getAvatar());
-        }
+        user.setAvatar(normalizeOptionalField(dto.getAvatar()));
 
         sysUserMapper.insert(user);
         log.info("添加用户成功：userId={}, username={}, name={}", user.getId(), user.getUsername(), user.getName());
@@ -148,6 +149,13 @@ public class UserServiceImpl implements UserService {
         queryWrapper.eq(SysUser::getDeleted, 0);
         queryWrapper.orderByDesc(SysUser::getCreateTime);
         return sysUserMapper.selectList(queryWrapper);
+    }
+
+    private String normalizeOptionalField(String value) {
+        if (!StringUtils.hasText(value)) {
+            return null;
+        }
+        return value.trim();
     }
 
 }

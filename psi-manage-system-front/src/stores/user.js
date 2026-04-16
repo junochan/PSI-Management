@@ -10,8 +10,8 @@ export const useUserStore = defineStore('user', () => {
   const login = (user, jwtToken) => {
     userInfo.value = {
       ...user,
-      email: user.email || 'admin@inventory.com',
-      phone: user.phone || '138****8888',
+      email: user.email || '',
+      phone: user.phone || '',
       avatar: user.avatar || '',
       permissions: Array.isArray(user.permissions) ? user.permissions : []
     }

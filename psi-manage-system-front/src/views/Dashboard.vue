@@ -16,7 +16,6 @@
       <el-card class="chart-card main-chart">
         <template #header>
           <div class="chart-header">
-            <h3>销售趋势</h3>
             <div class="chart-tabs">
               <el-radio-group v-model="chartPeriod" size="small">
                 <el-radio-button value="7">近7天</el-radio-button>
@@ -30,11 +29,6 @@
       </el-card>
 
       <el-card class="chart-card category-chart">
-        <template #header>
-          <div class="chart-header">
-            <h3>商品分类销售Top5</h3>
-          </div>
-        </template>
         <div v-if="categoryData.length" class="category-list">
           <div class="category-item" v-for="cat in categoryData" :key="cat.name">
             <div class="category-icon" :style="{ background: cat.bgColor }">{{ cat.emoji }}</div>
@@ -58,11 +52,6 @@
     <div class="top-lists-grid">
       <!-- 商品销售Top5 -->
       <el-card class="top-list-card">
-        <template #header>
-          <div class="card-header">
-            <h3>商品销售Top5</h3>
-          </div>
-        </template>
         <div v-if="productSalesTop5.length" class="top-list">
           <div class="top-item" v-for="(item, index) in productSalesTop5" :key="item.productId ?? 'p-' + index">
             <div class="top-rank" :class="{ 'top-1': index === 0, 'top-2': index === 1, 'top-3': index === 2 }">{{ index + 1 }}</div>
@@ -78,11 +67,6 @@
 
       <!-- 客户销售Top5 -->
       <el-card class="top-list-card">
-        <template #header>
-          <div class="card-header">
-            <h3>客户销售Top5</h3>
-          </div>
-        </template>
         <div v-if="customerSalesTop5.length" class="top-list">
           <div class="top-item" v-for="(item, index) in customerSalesTop5" :key="item.customerId ?? 'c-' + index">
             <div class="top-rank" :class="{ 'top-1': index === 0, 'top-2': index === 1, 'top-3': index === 2 }">{{ index + 1 }}</div>
@@ -100,7 +84,6 @@
       <el-card class="top-list-card warning-list">
         <template #header>
           <div class="card-header">
-            <h3>库存预警Top10</h3>
             <el-tag type="warning" effect="light" size="small">{{ inventoryWarningTop10.length }}项</el-tag>
           </div>
         </template>
@@ -126,7 +109,6 @@
       <el-card class="top-list-card stagnant-list">
         <template #header>
           <div class="card-header">
-            <h3>库存呆滞Top10</h3>
             <el-tag type="danger" effect="light" size="small">{{ inventoryStagnantTop10.length }}项</el-tag>
           </div>
         </template>
@@ -149,7 +131,6 @@
     <el-card class="orders-card">
       <template #header>
         <div class="card-header">
-          <h3>近期订单（最近10条）</h3>
           <el-button type="primary" link @click="router.push('/sales')">查看全部</el-button>
         </div>
       </template>
@@ -204,14 +185,10 @@
 import { ref, computed, onMounted, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import * as echarts from 'echarts'
-import { useDataStore } from '@/stores/data'
-import { useUserStore } from '@/stores/user'
 import { dashboardApi } from '@/api'
 import { firstProductImageUrl } from '@/utils/productImages'
 
 const router = useRouter()
-const dataStore = useDataStore()
-const userStore = useUserStore()
 
 const salesChartRef = ref()
 const chartPeriod = ref('7')
@@ -337,14 +314,13 @@ const formatOrderAmount = (v) => {
 
 // 获取商品图片
 const getProductImage = (productId) => {
-  const product = dataStore.products.find(p => p.id === productId)
-  return firstProductImageUrl(product?.image)
+  const row = (overview.value?.recentOrders || []).find((o) => Number(o.productId) === Number(productId))
+  return firstProductImageUrl(row?.productImage || row?.image)
 }
 
-// 获取商品名称（从商品列表动态获取最新名称）
+// 商品名称以仪表盘接口返回为准
 const getProductName = (productId, fallbackName) => {
-  const product = dataStore.products.find(p => p.id === productId)
-  return product?.name || fallbackName || '-'
+  return fallbackName || '-'
 }
 
 const formatTrendDayLabel = (isoDate) => {
@@ -456,18 +432,8 @@ const viewOrder = (row) => {
   router.push(`/sales/order/${row.id}`)
 }
 
-// 商品列表仅用于近期订单表格里的缩略图/名称补全；无商品权限时不请求 /products
-// 统计、图表、列表数据均来自 /dashboard/overview（仅需 dashboard 权限）
+// 统计、图表、列表数据均来自 /dashboard/overview（以真实接口数据为准）
 const loadData = async () => {
-  if (
-    userStore.hasPermission('products') ||
-    userStore.hasPermission('product:view') ||
-    userStore.hasPermission('product:add') ||
-    userStore.hasPermission('product:edit') ||
-    userStore.hasPermission('product:delete')
-  ) {
-    await dataStore.loadProducts()
-  }
   await loadOverview()
   initSalesChart()
 }
@@ -549,14 +515,8 @@ onMounted(() => {
 
       .chart-header {
         display: flex;
-        justify-content: space-between;
+        justify-content: flex-end;
         align-items: center;
-
-        h3 {
-          font-size: 16px;
-          font-weight: 600;
-          color: #303133;
-        }
       }
 
       .chart-container {
@@ -653,14 +613,8 @@ onMounted(() => {
 
     .card-header {
       display: flex;
-      justify-content: space-between;
+      justify-content: flex-end;
       align-items: center;
-
-      h3 {
-        font-size: 16px;
-        font-weight: 600;
-        color: #303133;
-      }
     }
 
     .order-no {
@@ -746,14 +700,8 @@ onMounted(() => {
 
       .card-header {
         display: flex;
-        justify-content: space-between;
+        justify-content: flex-end;
         align-items: center;
-
-        h3 {
-          font-size: 16px;
-          font-weight: 600;
-          color: #303133;
-        }
       }
 
       .top-list-empty {

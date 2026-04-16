@@ -3,7 +3,6 @@
     <el-card>
       <template #header>
         <div class="card-header">
-          <h3>采购单详情</h3>
           <div class="header-actions">
             <el-button @click="goBack">返回</el-button>
           </div>
@@ -30,19 +29,18 @@
         <el-descriptions-item label="已入库"><span class="inbound-qty">{{ order?.inboundQuantity || 0 }} 套</span></el-descriptions-item>
         <el-descriptions-item label="入库状态"><el-tag :type="getInboundStatusType(order?.inboundStatus)">{{ formatInboundStatus(order?.inboundStatus) }}</el-tag></el-descriptions-item>
         <el-descriptions-item label="付款状态"><el-tag :type="getPayStatusType(order?.payStatus)">{{ formatPayStatus(order?.payStatus) }}</el-tag></el-descriptions-item>
-        <el-descriptions-item label="付款方式">{{ order?.payMethod || '-' }}</el-descriptions-item>
-        <el-descriptions-item label="期望交货日期">{{ order?.expectDate || '-' }}</el-descriptions-item>
+        <el-descriptions-item label="付款方式">{{ order?.payMethod || order?.paymentMethod || '-' }}</el-descriptions-item>
+        <el-descriptions-item label="期望交货日期">{{ order?.expectDate || order?.expectedDate || '-' }}</el-descriptions-item>
         <el-descriptions-item label="入库仓库">
           <el-tag type="success" effect="light">{{ getWarehouseName(order?.warehouseId) || order?.warehouseName || '-' }}</el-tag>
         </el-descriptions-item>
-        <el-descriptions-item label="操作人">{{ order?.operatorName || '-' }}</el-descriptions-item>
+        <el-descriptions-item label="操作人">{{ order?.operatorName || order?.operator || order?.creatorName || '-' }}</el-descriptions-item>
         <el-descriptions-item label="备注" :span="2">{{ order?.remark || '-' }}</el-descriptions-item>
       </el-descriptions>
     </el-card>
 
     <!-- 入库进度 -->
     <el-card style="margin-top: 20px" v-if="order?.inboundStatus !== 'completed' && order?.inboundStatus !== 'cancelled'">
-      <template #header><h3>入库进度</h3></template>
       <el-steps :active="order?.inboundStatus === 'partial' ? 2 : 1" finish-status="success">
         <el-step title="创建采购单" description="采购单已创建" />
         <el-step title="部分入库" :description="`已入库 ${order?.inboundQuantity || 0} 套，待入库 ${order?.pendingQuantity} 套`" />
@@ -56,51 +54,79 @@
 import { ref, computed, onMounted } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { ElMessage } from 'element-plus'
-import { useDataStore } from '@/stores/data'
+import { categoryApi, productApi, purchaseApi, supplierApi, warehouseApi } from '@/api'
 import { formatTime } from '@/utils/time'
 import { firstProductImageUrl } from '@/utils/productImages'
 
 const router = useRouter()
 const route = useRoute()
-const dataStore = useDataStore()
 
 const orderId = computed(() => route.params.id)
 const order = ref(null)
+const productDetail = ref(null)
+const supplierDetail = ref(null)
+const warehouseDetail = ref(null)
+const categoryDetail = ref(null)
 
-// 仓库列表
-const warehousesList = computed(() => dataStore.warehouses || [])
-
-// 动态获取仓库名称 - 从仓库列表中根据warehouseId查找
-const getWarehouseName = (warehouseId) => {
-  const warehouse = warehousesList.value.find(w => w.id === warehouseId)
-  return warehouse?.name || ''
+const resolveId = (value) => {
+  const id = Number(value)
+  return Number.isFinite(id) && id > 0 ? id : null
 }
 
-// 通过 supplierId 获取最新的供应商名称
+const loadRelatedData = async () => {
+  productDetail.value = null
+  supplierDetail.value = null
+  warehouseDetail.value = null
+  categoryDetail.value = null
+  if (!order.value) return
+
+  const productId = resolveId(order.value.productId)
+  const supplierId = resolveId(order.value.supplierId)
+  const warehouseId = resolveId(order.value.warehouseId)
+
+  const [productResult, supplierResult, warehouseResult] = await Promise.allSettled([
+    productId ? productApi.get(productId) : Promise.resolve(null),
+    supplierId ? supplierApi.get(supplierId) : Promise.resolve(null),
+    warehouseId ? warehouseApi.get(warehouseId) : Promise.resolve(null)
+  ])
+
+  if (productResult.status === 'fulfilled') productDetail.value = productResult.value
+  if (supplierResult.status === 'fulfilled') supplierDetail.value = supplierResult.value
+  if (warehouseResult.status === 'fulfilled') warehouseDetail.value = warehouseResult.value
+
+  const categoryId = resolveId(productDetail.value?.categoryId)
+  if (categoryId) {
+    try {
+      categoryDetail.value = await categoryApi.get(categoryId)
+    } catch {
+      categoryDetail.value = null
+    }
+  }
+}
+
+// 仓库名称优先使用关联详情接口
+const getWarehouseName = (warehouseId) => {
+  if (!order.value || order.value.warehouseId !== warehouseId) return ''
+  return warehouseDetail.value?.name || order.value.warehouseName || order.value.warehouse || ''
+}
+
+// 供应商名称优先使用关联详情接口
 const supplierDisplayName = computed(() => {
   if (!order.value) return ''
-  // 如果有 supplierId，从供应商列表中获取最新的名称
-  if (order.value.supplierId) {
-    const supplier = dataStore.suppliers.find(s => s.id === order.value.supplierId)
-    if (supplier) return supplier.name
-  }
-  // 否则使用存储的名称
-  return order.value.supplierName || order.value.supplier
+  return supplierDetail.value?.name || order.value.supplierName || order.value.supplier || '-'
 })
 
-// 获取商品分类名称
+// 商品分类优先使用关联详情接口
 const productCategoryName = computed(() => {
   if (!order.value) return ''
-  const product = dataStore.products.find(p => p.id === order.value.productId)
-  if (product) {
-    // 从分类列表中查找分类名称
-    if (product.categoryId) {
-      const category = dataStore.categories.find(c => c.id === product.categoryId)
-      return category?.name || product.categoryName || product.category || ''
-    }
-    return product.categoryName || product.category || ''
-  }
-  return ''
+  return (
+    order.value.categoryName ||
+    order.value.category ||
+    productDetail.value?.categoryName ||
+    productDetail.value?.category ||
+    categoryDetail.value?.name ||
+    '-'
+  )
 })
 
 // 状态格式化函数
@@ -118,14 +144,18 @@ const getPayStatusType = (status) => ({ 'paid': 'success', 'unpaid': 'warning', 
 
 // 获取商品图片
 const getProductImage = (productId) => {
-  const product = dataStore.products.find(p => p.id === productId)
-  return firstProductImageUrl(product?.image)
+  if (!order.value || order.value.productId !== productId) return ''
+  return firstProductImageUrl(
+    productDetail.value?.image ||
+    order.value.productImage ||
+    order.value.image
+  )
 }
 
-// 获取商品名称（从商品列表动态获取最新名称）
+// 商品名称优先使用关联详情接口
 const getProductName = (productId, fallbackName) => {
-  const product = dataStore.products.find(p => p.id === productId)
-  return product?.name || fallbackName || '-'
+  if (!order.value || order.value.productId !== productId) return fallbackName || '-'
+  return productDetail.value?.name || order.value.productName || order.value.product || fallbackName || '-'
 }
 
 // 获取商品图标（无图片时使用）
@@ -139,14 +169,19 @@ const getProductIcon = (productName) => {
 }
 
 onMounted(async () => {
-  await Promise.all([
-    dataStore.loadSuppliers(),
-    dataStore.loadPurchaseOrders(),
-    dataStore.loadProducts(),
-    dataStore.loadCategories(),
-    dataStore.loadWarehouses()
-  ])
-  order.value = dataStore.purchaseOrders.find(o => o.id === Number(orderId.value))
+  const id = Number(orderId.value)
+  if (!id) {
+    ElMessage.warning('采购单 ID 无效')
+    router.replace('/purchase')
+    return
+  }
+  try {
+    order.value = await purchaseApi.get(id)
+    await loadRelatedData()
+  } catch (e) {
+    ElMessage.error(e.message || '加载采购单失败')
+    router.replace('/purchase')
+  }
 })
 const goBack = () => router.back()
 </script>
@@ -155,13 +190,8 @@ const goBack = () => router.back()
 .purchase-order-detail {
   .card-header {
     display: flex;
-    justify-content: space-between;
+    justify-content: flex-end;
     align-items: center;
-    h3 {
-      font-size: 18px;
-      font-weight: 600;
-      color: #303133;
-    }
     .header-actions {
       display: flex;
       gap: 12px;
