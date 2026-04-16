@@ -201,8 +201,15 @@
             </el-form-item>
           </el-col>
         </el-row>
-                <el-form-item label="商品描述">
-          <el-input v-model="productForm.description" type="textarea" :rows="3" placeholder="输入商品描述" />
+                <el-form-item label="商品描述" prop="description">
+          <el-input
+            v-model="productForm.description"
+            type="textarea"
+            :rows="3"
+            maxlength="500"
+            show-word-limit
+            placeholder="输入商品描述"
+          />
         </el-form-item>
       </el-form>
       <template #footer>
@@ -512,7 +519,8 @@ const productRules = {
   ],
   categoryName: [{ required: true, message: '请选择商品分类', trigger: 'change' }],
   costPrice: [{ required: true, message: '请输入成本价', trigger: 'blur' }],
-  salePrice: [{ required: true, message: '请输入销售价', trigger: 'blur' }]
+  salePrice: [{ required: true, message: '请输入销售价', trigger: 'blur' }],
+  description: [{ max: 500, message: '商品描述长度不能超过 500 个字符', trigger: 'blur' }]
 }
 
 // 获取商品图标

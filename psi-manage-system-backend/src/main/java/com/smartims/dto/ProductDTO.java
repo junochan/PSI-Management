@@ -2,6 +2,7 @@ package com.smartims.dto;
 
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Size;
 import lombok.Data;
 
 import java.io.Serializable;
@@ -44,6 +45,7 @@ public class ProductDTO implements Serializable {
 
     private String image;
 
+    @Size(max = 500, message = "商品描述长度不能超过500个字符")
     private String description;
 
     /**

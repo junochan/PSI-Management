@@ -2,12 +2,16 @@
   <div class="dashboard-page">
     <!-- 统计卡片 -->
     <div class="stats-grid">
-      <el-card class="stat-card" v-for="stat in statistics" :key="stat.label">
-        <div class="stat-icon" :class="stat.iconClass">
-          <el-icon><component :is="stat.icon" /></el-icon>
+      <el-card class="stat-card dashboard-stat-card" v-for="stat in statistics" :key="stat.label">
+        <template #header>
+          <span class="stat-card-title">{{ stat.label }}</span>
+        </template>
+        <div class="stat-card-body">
+          <div class="stat-icon" :class="stat.iconClass">
+            <el-icon><component :is="stat.icon" /></el-icon>
+          </div>
+          <div class="stat-value">{{ stat.value }}</div>
         </div>
-        <div class="stat-value">{{ stat.value }}</div>
-        <div class="stat-label">{{ stat.label }}</div>
       </el-card>
     </div>
 
@@ -16,6 +20,7 @@
       <el-card class="chart-card main-chart">
         <template #header>
           <div class="chart-header">
+            <span class="chart-card-title">销售趋势</span>
             <div class="chart-tabs">
               <el-radio-group v-model="chartPeriod" size="small">
                 <el-radio-button value="7">近7天</el-radio-button>
@@ -29,6 +34,9 @@
       </el-card>
 
       <el-card class="chart-card category-chart">
+        <template #header>
+          <span class="chart-card-title">分类销售 Top5</span>
+        </template>
         <div v-if="categoryData.length" class="category-list">
           <div class="category-item" v-for="cat in categoryData" :key="cat.name">
             <div class="category-icon" :style="{ background: cat.bgColor }">{{ cat.emoji }}</div>
@@ -52,6 +60,9 @@
     <div class="top-lists-grid">
       <!-- 商品销售Top5 -->
       <el-card class="top-list-card">
+        <template #header>
+          <span class="top-list-card-title">商品销售 Top5</span>
+        </template>
         <div v-if="productSalesTop5.length" class="top-list">
           <div class="top-item" v-for="(item, index) in productSalesTop5" :key="item.productId ?? 'p-' + index">
             <div class="top-rank" :class="{ 'top-1': index === 0, 'top-2': index === 1, 'top-3': index === 2 }">{{ index + 1 }}</div>
@@ -67,6 +78,9 @@
 
       <!-- 客户销售Top5 -->
       <el-card class="top-list-card">
+        <template #header>
+          <span class="top-list-card-title">客户销售 Top5</span>
+        </template>
         <div v-if="customerSalesTop5.length" class="top-list">
           <div class="top-item" v-for="(item, index) in customerSalesTop5" :key="item.customerId ?? 'c-' + index">
             <div class="top-rank" :class="{ 'top-1': index === 0, 'top-2': index === 1, 'top-3': index === 2 }">{{ index + 1 }}</div>
@@ -84,6 +98,7 @@
       <el-card class="top-list-card warning-list">
         <template #header>
           <div class="card-header">
+            <span class="top-list-card-title">库存预警 Top10</span>
             <el-tag type="warning" effect="light" size="small">{{ inventoryWarningTop10.length }}项</el-tag>
           </div>
         </template>
@@ -109,6 +124,7 @@
       <el-card class="top-list-card stagnant-list">
         <template #header>
           <div class="card-header">
+            <span class="top-list-card-title">库存呆滞 Top10</span>
             <el-tag type="danger" effect="light" size="small">{{ inventoryStagnantTop10.length }}项</el-tag>
           </div>
         </template>
@@ -131,6 +147,7 @@
     <el-card class="orders-card">
       <template #header>
         <div class="card-header">
+          <span class="orders-card-title">近期订单</span>
           <el-button type="primary" link @click="router.push('/sales')">查看全部</el-button>
         </div>
       </template>
@@ -451,9 +468,29 @@ onMounted(() => {
     gap: 12px;
     margin-bottom: 24px;
 
-    .stat-card {
+    .stat-card.dashboard-stat-card {
+      /* 避免与全局 .stat-card 根节点 padding 叠压导致内容区异常 */
+      padding: 0;
+
+      :deep(.el-card__header) {
+        padding: 10px 16px;
+        border-bottom: 1px solid #ebeef5;
+      }
+
+      .stat-card-title {
+        font-size: 14px;
+        font-weight: 500;
+        color: #606266;
+      }
+
       :deep(.el-card__body) {
         padding: 12px 16px;
+      }
+
+      .stat-card-body {
+        display: flex;
+        align-items: center;
+        gap: 14px;
       }
 
       .stat-icon {
@@ -464,7 +501,7 @@ onMounted(() => {
         align-items: center;
         justify-content: center;
         font-size: 18px;
-        margin-bottom: 8px;
+        flex-shrink: 0;
 
         &--purple {
           background: rgba(139, 92, 246, 0.1);
@@ -491,12 +528,8 @@ onMounted(() => {
         font-size: 22px;
         font-weight: 700;
         color: #303133;
-        margin-bottom: 2px;
-      }
-
-      .stat-label {
-        font-size: 13px;
-        color: #909399;
+        line-height: 1.2;
+        min-width: 0;
       }
     }
   }
@@ -515,8 +548,16 @@ onMounted(() => {
 
       .chart-header {
         display: flex;
-        justify-content: flex-end;
+        justify-content: space-between;
         align-items: center;
+        gap: 12px;
+        flex-wrap: wrap;
+      }
+
+      .chart-card-title {
+        font-size: 15px;
+        font-weight: 600;
+        color: #303133;
       }
 
       .chart-container {
@@ -613,8 +654,16 @@ onMounted(() => {
 
     .card-header {
       display: flex;
-      justify-content: flex-end;
+      justify-content: space-between;
       align-items: center;
+      gap: 12px;
+      flex-wrap: wrap;
+    }
+
+    .orders-card-title {
+      font-size: 15px;
+      font-weight: 600;
+      color: #303133;
     }
 
     .order-no {
@@ -700,8 +749,16 @@ onMounted(() => {
 
       .card-header {
         display: flex;
-        justify-content: flex-end;
+        justify-content: space-between;
         align-items: center;
+        gap: 12px;
+        flex-wrap: wrap;
+      }
+
+      .top-list-card-title {
+        font-size: 15px;
+        font-weight: 600;
+        color: #303133;
       }
 
       .top-list-empty {
