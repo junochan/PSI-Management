@@ -2,7 +2,7 @@
   <div class="main-layout">
     <!-- 侧边栏 -->
     <aside class="sidebar" :class="{ collapsed: sidebarCollapsed }">
-      <div class="sidebar-toggle" @click="sidebarCollapsed = !sidebarCollapsed">
+      <div class="sidebar-toggle" @click="toggleSidebar">
         <el-icon>
           <component :is="sidebarCollapsed ? 'Expand' : 'Fold'" />
         </el-icon>
@@ -19,7 +19,7 @@
     </aside>
 
     <!-- 主内容区 -->
-    <main class="main-content" :class="{ expanded: sidebarCollapsed }">
+    <main class="main-content" :style="mainContentStyle">
       <!-- 顶栏 -->
       <header class="header">
         <div class="header-left">
@@ -125,7 +125,7 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, nextTick } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { useUserStore } from '@/stores/user'
@@ -186,6 +186,29 @@ const currentUserInfo = computed(() => {
 })
 
 const sidebarCollapsed = ref(false)
+const SIDEBAR_WIDTH = 260
+const SIDEBAR_COLLAPSED_WIDTH = 80
+
+const mainContentStyle = computed(() => {
+  const sidebarWidth = sidebarCollapsed.value ? SIDEBAR_COLLAPSED_WIDTH : SIDEBAR_WIDTH
+  return {
+    marginLeft: `${sidebarWidth}px`,
+    width: `calc(100% - ${sidebarWidth}px)`
+  }
+})
+
+const triggerLayoutReflow = () => {
+  window.dispatchEvent(new Event('resize'))
+}
+
+const toggleSidebar = async () => {
+  sidebarCollapsed.value = !sidebarCollapsed.value
+  await nextTick()
+  triggerLayoutReflow()
+  // 等待侧栏过渡完成后再次触发，确保表格/图表按最终宽度重算
+  window.setTimeout(triggerLayoutReflow, 320)
+}
+
 const profileDialogVisible = ref(false)
 const profileTab = ref('info')
 const profileFormRef = ref()
@@ -500,16 +523,12 @@ const saveProfile = async () => {
   }
 
   .main-content {
-    margin-left: 260px;
-    flex: 1;
+    width: calc(100% - 260px);
     background: #F5F7FA;
     display: flex;
     flex-direction: column;
-    transition: margin-left 0.3s ease;
-
-    &.expanded {
-      margin-left: 80px;
-    }
+    min-width: 0;
+    transition: margin-left 0.3s ease, width 0.3s ease;
 
     .header {
       display: flex;

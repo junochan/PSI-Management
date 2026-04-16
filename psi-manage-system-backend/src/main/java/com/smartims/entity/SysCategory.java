@@ -1,6 +1,7 @@
 package com.smartims.entity;
 
 import com.baomidou.mybatisplus.annotation.*;
+import com.smartims.util.StatusNameResolver;
 import lombok.Data;
 
 import java.io.Serializable;
@@ -63,5 +64,9 @@ public class SysCategory implements Serializable {
      */
     @TableLogic
     private Integer deleted;
+
+    public String getStatusName() {
+        return StatusNameResolver.resolveEnableDisableStatusName(status);
+    }
 
 }

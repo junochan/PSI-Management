@@ -1,6 +1,7 @@
 package com.smartims.entity;
 
 import com.baomidou.mybatisplus.annotation.*;
+import com.smartims.util.StatusNameResolver;
 import lombok.Data;
 
 import java.io.Serializable;
@@ -99,5 +100,13 @@ public class SalesOrder implements Serializable {
 
     @TableLogic
     private Integer deleted;
+
+    public String getStatusName() {
+        return StatusNameResolver.resolveSalesOrderStatusName(status);
+    }
+
+    public String getPayStatusName() {
+        return StatusNameResolver.resolvePayStatusName(payStatus);
+    }
 
 }

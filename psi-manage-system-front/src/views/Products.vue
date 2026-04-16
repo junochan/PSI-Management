@@ -5,19 +5,19 @@
       <template #header>
         <div class="card-header">
           <div class="header-actions">
-            <el-select v-model="filterCategory" placeholder="按分类筛选" clearable filterable style="width: 140px">
+            <el-select v-model="filterCategory" class="filter-control filter-category" placeholder="按分类筛选" clearable filterable>
               <el-option v-for="c in categoriesList" :key="c.id" :label="c.name" :value="c.name" />
             </el-select>
-            <el-select v-model="filterStatus" placeholder="按状态筛选" clearable filterable style="width: 120px">
+            <el-select v-model="filterStatus" class="filter-control filter-status" placeholder="按状态筛选" clearable filterable>
               <el-option label="在售" value="在售" />
               <el-option label="停售" value="停售" />
             </el-select>
             <el-input
               v-model="searchKeyword"
+              class="filter-control filter-search"
               placeholder="搜索商品名称、编码..."
               prefix-icon="Search"
               clearable
-              style="width: 200px"
             />
             <el-upload
               v-if="canProductRead"
@@ -32,12 +32,12 @@
             <el-input-number
               v-if="canProductRead"
               v-model="imageSimilarityThreshold"
+              class="filter-control filter-threshold"
               :min="0.2"
               :max="0.99"
               :step="0.05"
               :precision="2"
               size="small"
-              style="width: 108px"
             />
             <el-button v-if="canProductRead" type="primary" size="small" :loading="imageSearchLoading" @click="submitImageSearch">以图搜图</el-button>
             <el-button v-if="imageSearchMode" type="info" size="small" link @click="exitImageSearch">退出图搜</el-button>
@@ -57,7 +57,7 @@
         empty-text="暂无数据"
         style="width: 100%"
         table-layout="fixed"
-        :max-height="520"
+        :max-height="tableMaxHeight"
       >
         <el-table-column label="图片" width="76" align="center" fixed="left">
           <template #default="{ row }">
@@ -129,7 +129,7 @@
     <el-dialog
       v-model="productDialogVisible"
       :title="editMode ? '编辑商品' : '添加商品'"
-      width="600px"
+      :width="productDialogWidth"
       destroy-on-close
     >
       <el-form ref="productFormRef" :model="productForm" :rules="productRules" label-width="100px">
@@ -214,7 +214,7 @@
     </el-dialog>
 
     <!-- 商品详情对话框 -->
-    <el-dialog v-model="productDetailVisible" title="商品详情" width="500px">
+    <el-dialog v-model="productDetailVisible" title="商品详情" :width="detailDialogWidth">
       <div class="product-detail-image-wrapper">
         <div v-if="currentProductDetailImages.length" class="product-detail-images-row">
           <img
@@ -246,7 +246,7 @@
     </el-dialog>
 
     <!-- 批量导入对话框 -->
-    <el-dialog v-model="importDialogVisible" title="批量导入商品" width="560px">
+    <el-dialog v-model="importDialogVisible" title="批量导入商品" :width="importDialogWidth">
       <div class="import-template-bar">
         <el-button type="primary" @click="downloadProductImportTemplate">
           <el-icon><Download /></el-icon>
@@ -280,7 +280,7 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted, watch } from 'vue'
+import { ref, computed, onMounted, onBeforeUnmount, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { useDataStore } from '@/stores/data'
@@ -326,8 +326,28 @@ const uploadFile = ref(null)
 const importLoading = ref(false)
 const loading = ref(false)
 const imageUploading = ref(false)
+const viewportWidth = ref(typeof window !== 'undefined' ? window.innerWidth : 1440)
+const viewportHeight = ref(typeof window !== 'undefined' ? window.innerHeight : 900)
 
 const categoriesList = computed(() => dataStore.categories || [])
+const tableMaxHeight = computed(() => {
+  return Math.max(320, Math.min(700, viewportHeight.value - 320))
+})
+const productDialogWidth = computed(() => {
+  if (viewportWidth.value <= 768) return '92vw'
+  if (viewportWidth.value <= 1200) return '78vw'
+  return '600px'
+})
+const detailDialogWidth = computed(() => {
+  if (viewportWidth.value <= 768) return '92vw'
+  if (viewportWidth.value <= 1200) return '70vw'
+  return '500px'
+})
+const importDialogWidth = computed(() => {
+  if (viewportWidth.value <= 768) return '92vw'
+  if (viewportWidth.value <= 1200) return '76vw'
+  return '560px'
+})
 
 const currentProductDetailImages = computed(() => parseProductImageUrls(currentProduct.value?.image))
 
@@ -897,9 +917,20 @@ const handleExport = async () => {
   ElMessage.success(`已导出 ${exportData.length} 条商品数据`)
 }
 
+const handleViewportResize = () => {
+  viewportWidth.value = window.innerWidth
+  viewportHeight.value = window.innerHeight
+}
+
 // 初始化加载数据
 onMounted(() => {
+  handleViewportResize()
+  window.addEventListener('resize', handleViewportResize)
   loadProducts()
+})
+
+onBeforeUnmount(() => {
+  window.removeEventListener('resize', handleViewportResize)
 })
 </script>
 
@@ -949,6 +980,8 @@ onMounted(() => {
       .header-actions {
         display: flex;
         align-items: center;
+        flex-wrap: wrap;
+        justify-content: flex-end;
         gap: 16px;
       }
     }
@@ -1052,6 +1085,29 @@ onMounted(() => {
       vertical-align: middle;
       border: 1px solid #e4e7ed;
     }
+
+    .filter-control {
+      :deep(.el-input__wrapper),
+      :deep(.el-select__wrapper) {
+        min-width: 0;
+      }
+    }
+
+    .filter-category {
+      width: 140px;
+    }
+
+    .filter-status {
+      width: 120px;
+    }
+
+    .filter-search {
+      width: 200px;
+    }
+
+    .filter-threshold {
+      width: 108px;
+    }
   }
 
   .product-images-editor {
@@ -1152,6 +1208,42 @@ onMounted(() => {
       border-radius: 8px;
       border: 1px solid #E4E7ED;
       font-size: 40px;
+    }
+  }
+}
+
+@media (max-width: 1366px) {
+  .products-page {
+    .table-card {
+      .card-header {
+        justify-content: flex-start;
+      }
+
+      .header-actions {
+        gap: 10px;
+      }
+    }
+  }
+}
+
+@media (max-width: 992px) {
+  .products-page {
+    .table-card {
+      .header-actions {
+        justify-content: flex-start;
+      }
+
+      .filter-control {
+        width: 100% !important;
+      }
+
+      .filter-threshold {
+        width: 120px !important;
+      }
+
+      .pagination-wrapper {
+        justify-content: center;
+      }
     }
   }
 }

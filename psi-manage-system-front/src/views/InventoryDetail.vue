@@ -78,9 +78,6 @@
         <el-table-column label="操作人" min-width="100">
           <template #default="{ row }">{{ row.operatorName || row.operator || '-' }}</template>
         </el-table-column>
-        <el-table-column label="备注" min-width="120" show-overflow-tooltip>
-          <template #default="{ row }">{{ row.remark || '-' }}</template>
-        </el-table-column>
       </el-table>
 
       <!-- 出库记录 -->
