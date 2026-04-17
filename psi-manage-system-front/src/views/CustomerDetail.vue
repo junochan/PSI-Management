@@ -27,7 +27,7 @@
         <div class="stat-item">
           <div class="stat-icon"><el-icon><Money /></el-icon></div>
           <div class="stat-content">
-            <span class="stat-value">¥{{ customerStats.totalAmount?.toLocaleString() }}</span>
+            <span class="stat-value">¥{{ formatAmountDisplay(customerStats.totalAmount ?? 0) }}</span>
             <span class="stat-label">累计消费</span>
           </div>
         </div>
@@ -41,7 +41,7 @@
         <div class="stat-item">
           <div class="stat-icon"><el-icon><TrendCharts /></el-icon></div>
           <div class="stat-content">
-            <span class="stat-value">¥{{ customerStats.avgAmount?.toLocaleString() }}</span>
+            <span class="stat-value">¥{{ formatAmountDisplay(customerStats.avgAmount ?? 0) }}</span>
             <span class="stat-label">平均客单价</span>
           </div>
         </div>
@@ -67,14 +67,14 @@
           <template #default="{ row }">{{ row.quantity }}</template>
         </el-table-column>
         <el-table-column label="金额" width="100" align="right">
-          <template #default="{ row }"><span class="amount">¥{{ (row.amount || 0).toLocaleString() }}</span></template>
+          <template #default="{ row }"><span class="amount">¥{{ formatAmountDisplay(row.amount || 0) }}</span></template>
         </el-table-column>
         <el-table-column label="订单状态" width="100" align="center">
           <template #default="{ row }">
             <el-tag :type="getStatusType(row.status)" effect="light">{{ formatOrderStatus(row.status) }}</el-tag>
           </template>
         </el-table-column>
-        <el-table-column label="下单时间" width="140" show-overflow-tooltip>
+        <el-table-column label="下单时间" width="176" show-overflow-tooltip>
           <template #default="{ row }">{{ formatTime(row.createTime) }}</template>
         </el-table-column>
         <el-table-column label="操作" width="80" align="center">
@@ -95,6 +95,7 @@ import { useUserStore } from '@/stores/user'
 import { customerApi, salesApi } from '@/api'
 import { formatTime } from '@/utils/time'
 import { firstProductImageUrl } from '@/utils/productImages'
+import { formatAmountDisplay } from '@/utils/moneyFormat'
 
 const router = useRouter()
 const route = useRoute()

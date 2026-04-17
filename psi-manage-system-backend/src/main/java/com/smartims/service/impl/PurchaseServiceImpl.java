@@ -13,6 +13,7 @@ import com.smartims.service.InventoryEmbeddingSyncService;
 import com.smartims.service.PurchaseService;
 import com.smartims.security.UserContext;
 import com.smartims.util.CodeGenerator;
+import com.smartims.util.StatusNameResolver;
 import com.smartims.vo.PurchaseStatsVO;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -170,11 +171,9 @@ public class PurchaseServiceImpl implements PurchaseService {
             throw new BusinessException("供应商不存在");
         }
 
-        // 验证商品
+        // 验证商品（停售不可新建采购单）
         Product product = productMapper.selectById(dto.getProductId());
-        if (product == null || product.getDeleted() == 1) {
-            throw new BusinessException("商品不存在");
-        }
+        assertProductOrderableForPurchase(product, null);
 
         // 创建采购订单（单号按数据库当日最大值递增，避免与内存计数器冲突；并发冲突时重试）
         PurchaseOrder order = new PurchaseOrder();
@@ -208,6 +207,19 @@ public class PurchaseServiceImpl implements PurchaseService {
                 }
             }
         }
+    }
+
+    private void assertProductOrderableForPurchase(Product product, Long previousOrderProductId) {
+        if (product == null || product.getDeleted() == 1) {
+            throw new BusinessException("商品不存在");
+        }
+        if (!StatusNameResolver.isProductOffSale(product.getStatus())) {
+            return;
+        }
+        if (previousOrderProductId != null && previousOrderProductId.equals(product.getId())) {
+            return;
+        }
+        throw new BusinessException("该商品已停售，无法用于新建采购单或更换为该商品");
     }
 
     /**
@@ -285,11 +297,9 @@ public class PurchaseServiceImpl implements PurchaseService {
             throw new BusinessException("供应商不存在");
         }
 
-        // 验证商品
+        // 验证商品（停售仅允许订单未更换商品时保留）
         Product product = productMapper.selectById(dto.getProductId());
-        if (product == null || product.getDeleted() == 1) {
-            throw new BusinessException("商品不存在");
-        }
+        assertProductOrderableForPurchase(product, order.getProductId());
 
         order.setSupplierId(dto.getSupplierId());
         order.setSupplierName(supplier.getName());
@@ -333,6 +343,11 @@ public class PurchaseServiceImpl implements PurchaseService {
             throw new BusinessException("入库数量不能超过待入库数量");
         }
 
+        Product product = productMapper.selectById(order.getProductId());
+        if (product == null || product.getDeleted() == 1) {
+            throw new BusinessException("商品不存在");
+        }
+
         // 创建入库记录
         InboundRecord record = new InboundRecord();
         record.setPurchaseOrderId(orderId);
@@ -370,23 +385,36 @@ public class PurchaseServiceImpl implements PurchaseService {
         Inventory inventory = inventoryMapper.selectOne(queryWrapper);
 
         if (inventory == null) {
-            // 新增库存记录
+            // 新增库存记录（与手动入库等路径一致：冗余商品规格/分类，供库存详情展示）
             inventory = new Inventory();
             inventory.setProductId(order.getProductId());
             inventory.setSku(order.getSku());
             inventory.setProductName(order.getProductName());
+            inventory.setSpec(product.getSpec());
+            inventory.setCategory(product.getCategoryName());
             inventory.setWarehouseId(dto.getWarehouseId());
             inventory.setWarehouseName(warehouse.getName());
             inventory.setStock(dto.getQuantity());
             inventory.setSafeStock(10);
+            BigDecimal unit = order.getUnitPrice() != null ? order.getUnitPrice() : product.getCostPrice();
+            inventory.setCostPrice(unit);
+            if (unit != null) {
+                inventory.setStockValue(unit.multiply(new BigDecimal(dto.getQuantity())));
+            }
             inventory.setStatus("normal");
             inventory.setLastInboundTime(LocalDateTime.now());
             inventoryMapper.insert(inventory);
             inventoryEmbeddingSyncService.indexInventoryRow(inventory);
         } else {
-            // 更新库存数量
+            // 更新库存数量；历史采购入库可能未写入 spec，在此补全
             inventory.setStock(inventory.getStock() + dto.getQuantity());
             inventory.setLastInboundTime(LocalDateTime.now());
+            if (!StringUtils.hasText(inventory.getSpec())) {
+                inventory.setSpec(product.getSpec());
+            }
+            if (!StringUtils.hasText(inventory.getCategory())) {
+                inventory.setCategory(product.getCategoryName());
+            }
             inventoryMapper.updateById(inventory);
         }
 

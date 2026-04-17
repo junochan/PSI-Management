@@ -83,17 +83,17 @@
         <el-table-column label="规格" min-width="120" show-overflow-tooltip>
           <template #default="{ row }">{{ row.spec || '-' }}</template>
         </el-table-column>
-        <el-table-column label="分类" min-width="108" show-overflow-tooltip>
+        <el-table-column label="分类" min-width="86" show-overflow-tooltip>
           <template #default="{ row }">{{ row.categoryName || row.category || '-' }}</template>
         </el-table-column>
-        <el-table-column label="成本价" width="90" align="right" class-name="col-numeric">
+        <el-table-column label="成本价" min-width="116" align="right" class-name="col-numeric">
           <template #default="{ row }">
-            ¥{{ row.costPrice }}
+            ¥{{ formatAmountDisplay(row.costPrice ?? 0) }}
           </template>
         </el-table-column>
-        <el-table-column label="销售价" width="90" align="right" class-name="col-numeric">
+        <el-table-column label="销售价" min-width="116" align="right" class-name="col-numeric">
           <template #default="{ row }">
-            <span class="sale-price">¥{{ row.salePrice }}</span>
+            <span class="sale-price">¥{{ formatAmountDisplay(row.salePrice ?? 0) }}</span>
           </template>
         </el-table-column>
         <el-table-column label="状态" width="90" align="center">
@@ -153,7 +153,7 @@
               <el-icon v-else class="product-image-uploader-icon is-loading"><Loading /></el-icon>
             </el-upload>
           </div>
-          <div class="image-tip">最多 10 张；支持 JPG、PNG、GIF、WEBP；选择后自动上传至服务器</div>
+          <div class="image-tip">最多 10 张，单张不超过 2MB；支持 JPG、PNG、GIF、WEBP；选择后自动上传至服务器</div>
         </el-form-item>
         <el-form-item label="商品名称" prop="name">
           <el-input
@@ -240,8 +240,8 @@
         <el-descriptions-item label="品牌">{{ currentProduct?.brand }}</el-descriptions-item>
         <el-descriptions-item label="规格">{{ currentProduct?.spec }}</el-descriptions-item>
         <el-descriptions-item label="分类">{{ currentProduct?.categoryName || currentProduct?.category }}</el-descriptions-item>
-        <el-descriptions-item label="成本价">¥{{ currentProduct?.costPrice }}</el-descriptions-item>
-        <el-descriptions-item label="销售价">¥{{ currentProduct?.salePrice }}</el-descriptions-item>
+        <el-descriptions-item label="成本价">¥{{ formatAmountDisplay(currentProduct?.costPrice ?? 0) }}</el-descriptions-item>
+        <el-descriptions-item label="销售价">¥{{ formatAmountDisplay(currentProduct?.salePrice ?? 0) }}</el-descriptions-item>
         <el-descriptions-item label="状态">
           <el-tag :type="getProductStatusType(currentProduct?.status)">{{ formatProductStatus(currentProduct?.status) }}</el-tag>
         </el-descriptions-item>
@@ -295,6 +295,8 @@ import { useUserStore } from '@/stores/user'
 import { productApi } from '@/api'
 import * as XLSX from 'xlsx'
 import { parseProductImageUrls, firstProductImageUrl, encodeProductImagesForApi } from '@/utils/productImages'
+import { MAX_IMAGE_UPLOAD_BYTES } from '@/utils/uploadLimits'
+import { formatAmountDisplay } from '@/utils/moneyFormat'
 
 const router = useRouter()
 const dataStore = useDataStore()
@@ -410,6 +412,15 @@ watch([filterCategory, filterStatus, searchKeyword], () => {
   fetchProducts()
 })
 
+/** 分类被禁用后，筛选项若仍指向该名称则清空，避免无效筛选 */
+watch([categoriesList, filterCategory], () => {
+  const f = filterCategory.value
+  if (!f) return
+  if (!categoriesList.value.some((c) => c.name === f)) {
+    filterCategory.value = null
+  }
+})
+
 watch([currentPage, pageSize], () => {
   if (!imageSearchMode.value) fetchProducts()
 })
@@ -417,6 +428,10 @@ watch([currentPage, pageSize], () => {
 const onProductQueryImageChange = (uploadFile) => {
   const raw = uploadFile?.raw
   if (!raw) return
+  if (raw.size > MAX_IMAGE_UPLOAD_BYTES) {
+    ElMessage.warning('查询图片大小不能超过 2MB')
+    return
+  }
   const reader = new FileReader()
   reader.onload = (e) => {
     queryImageDataUrl.value = e.target.result
@@ -455,7 +470,7 @@ const runImageSearch = async () => {
     imageSearchTotal.value = Number(res.total) || 0
     imageSearchMode.value = true
     if (imageSearchTotal.value === 0) {
-      ElMessage.info('没有相似度达标的商品，可调低阈值或配置 DASHSCOPE_API_KEY')
+      ElMessage.info('没有相似度达标的商品，可以调低阈值再试')
     }
   } catch (e) {
     ElMessage.error(e.message || '以图搜图失败')
@@ -582,6 +597,10 @@ const openAddDialog = () => {
 const handleImageChange = async (file) => {
   const raw = file?.raw
   if (!raw) return
+  if (raw.size > MAX_IMAGE_UPLOAD_BYTES) {
+    ElMessage.warning('商品图片大小不能超过 2MB')
+    return
+  }
   if (productForm.value.imageList.length >= 10) {
     ElMessage.warning('商品图片最多 10 张')
     return
@@ -1031,8 +1050,6 @@ onBeforeUnmount(() => {
 
     .product-code {
       color: #606266;
-      font-family: monospace;
-      font-size: 13px;
     }
 
     .product-image-cell {

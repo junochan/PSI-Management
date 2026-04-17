@@ -55,6 +55,16 @@ public final class StatusNameResolver {
         };
     }
 
+    /**
+     * 是否停售。空值视为非停售（与新建商品默认「在售」及旧数据兼容）。
+     */
+    public static boolean isProductOffSale(String status) {
+        if (status == null || status.isBlank()) {
+            return false;
+        }
+        return "停售".equals(resolveProductStatusName(status.trim()));
+    }
+
     public static String resolveInventoryStatusName(String status) {
         return switch (safe(status)) {
             case "normal", "正常" -> "正常";

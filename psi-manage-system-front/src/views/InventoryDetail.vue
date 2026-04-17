@@ -41,8 +41,8 @@
         <el-descriptions-item label="呆滞状态">
           <el-tag :type="getStagnantStatusType(stock)" effect="light">{{ getStagnantStatusText(stock) }}</el-tag>
         </el-descriptions-item>
-        <el-descriptions-item label="成本价">¥{{ stock?.costPrice }}</el-descriptions-item>
-        <el-descriptions-item label="库存价值"><span class="amount">¥{{ stock?.stockValue }}</span></el-descriptions-item>
+        <el-descriptions-item label="成本价">¥{{ formatAmountDisplay(stock?.costPrice ?? 0) }}</el-descriptions-item>
+        <el-descriptions-item label="库存价值"><span class="amount">¥{{ formatAmountDisplay(stock?.stockValue ?? 0) }}</span></el-descriptions-item>
         <el-descriptions-item label="库存状态">
           <el-tag :type="getStockStatusType(stock?.status)" effect="light">{{ formatStockStatus(stock?.status) }}</el-tag>
         </el-descriptions-item>
@@ -54,7 +54,11 @@
       <div class="action-buttons">
         <el-button type="success" @click="openStockInbound"><el-icon><Plus /></el-icon>入库</el-button>
         <el-button type="warning" @click="openStockOutbound"><el-icon><Minus /></el-icon>出库</el-button>
-        <el-button type="primary" @click="openPurchaseFromStock" v-if="stock?.stock < stock?.safeStock"><el-icon><ShoppingCart /></el-icon>创建采购</el-button>
+        <el-button
+          type="primary"
+          @click="openPurchaseFromStock"
+          v-if="stock?.stock < stock?.safeStock && canShortcutPurchaseForStock(stock, products)"
+        ><el-icon><ShoppingCart /></el-icon>创建采购</el-button>
       </div>
 
       <!-- 入库记录 -->
@@ -72,7 +76,7 @@
         <el-table-column label="数量" width="80" align="center">
           <template #default="{ row }">{{ row.quantity }}</template>
         </el-table-column>
-        <el-table-column label="入库时间" min-width="140">
+        <el-table-column label="入库时间" width="176">
           <template #default="{ row }">{{ formatTime(row.createTime || row.time) }}</template>
         </el-table-column>
         <el-table-column label="操作人" min-width="100">
@@ -95,7 +99,7 @@
         <el-table-column label="数量" width="80" align="center">
           <template #default="{ row }">{{ row.quantity }}</template>
         </el-table-column>
-        <el-table-column label="出库时间" min-width="140">
+        <el-table-column label="出库时间" width="176">
           <template #default="{ row }">{{ formatTime(row.createTime || row.time) }}</template>
         </el-table-column>
         <el-table-column label="操作人" min-width="100">
@@ -280,7 +284,7 @@
         <el-row :gutter="20">
           <el-col :span="12">
             <el-form-item label="采购金额">
-              <el-input :value="`¥${(purchaseForm.quantity * purchaseForm.unitPrice || 0).toLocaleString()}`" disabled />
+              <el-input :value="`¥${formatAmountDisplay(purchaseForm.quantity * purchaseForm.unitPrice || 0)}`" disabled />
             </el-form-item>
           </el-col>
           <el-col :span="12">
@@ -306,9 +310,11 @@ import { ref, computed, onMounted } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { useUserStore } from '@/stores/user'
-import { inventoryApi, purchaseApi, salesApi, productApi, warehouseApi, supplierApi, categoryApi } from '@/api'
+import { inventoryApi, purchaseApi, salesApi, productApi, warehouseApi, supplierApi, categoryApi, CATEGORY_STATUS } from '@/api'
 import { formatTime } from '@/utils/time'
 import { firstProductImageUrl } from '@/utils/productImages'
+import { formatAmountDisplay } from '@/utils/moneyFormat'
+import { canShortcutPurchaseForStock } from '@/utils/productStatus'
 
 const router = useRouter()
 const route = useRoute()
@@ -553,7 +559,7 @@ const loadData = async () => {
     warehousesList.value = res.list || []
   }
   const loadCategories = async () => {
-    const res = await categoryApi.list()
+    const res = await categoryApi.list({ status: CATEGORY_STATUS.ENABLED })
     categoriesList.value = Array.isArray(res) ? res : []
   }
   const loadSuppliers = async () => {
@@ -843,6 +849,10 @@ const submitStockOutbound = async () => {
 
 // 打开采购对话框
 const openPurchaseFromStock = async () => {
+  if (!canShortcutPurchaseForStock(stock.value, products.value)) {
+    ElMessage.warning('该商品已停售，无法创建采购单')
+    return
+  }
   const res = await supplierApi.list({ page: 1, size: 200 })
   suppliersList.value = res.list || []
   const product = products.value.find(p => p.id === stock.value.productId)

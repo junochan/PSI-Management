@@ -112,12 +112,33 @@ public class ProductServiceImpl implements ProductService {
         }
     }
 
+    private static boolean isCategoryDisabled(SysCategory c) {
+        return c.getStatus() != null && c.getStatus() == 0;
+    }
+
+    /**
+     * 新建/导入商品：分类须存在且为启用状态（status=1；null 视为启用以兼容旧数据）。
+     */
+    private void assertCategoryEnabledForNewProduct(SysCategory cat) {
+        if (cat == null || cat.getDeleted() == 1) {
+            throw new BusinessException("商品分类不存在");
+        }
+        if (isCategoryDisabled(cat)) {
+            throw new BusinessException("商品分类「" + cat.getName() + "」已禁用，请选择启用中的分类");
+        }
+    }
+
     /**
      * 新建商品时解析分类：优先 DTO 中的 categoryId；否则按分类名称查库；再无则默认 1。
      */
     private Long resolveCategoryIdForCreate(ProductDTO dto) {
         if (dto.getCategoryId() != null) {
-            return dto.getCategoryId();
+            SysCategory byId = sysCategoryMapper.selectById(dto.getCategoryId());
+            if (byId == null || byId.getDeleted() == 1) {
+                throw new BusinessException("商品分类不存在");
+            }
+            assertCategoryEnabledForNewProduct(byId);
+            return byId.getId();
         }
         if (StringUtils.hasText(dto.getCategoryName())) {
             LambdaQueryWrapper<SysCategory> w = new LambdaQueryWrapper<>();
@@ -127,7 +148,12 @@ public class ProductServiceImpl implements ProductService {
             if (cat == null) {
                 throw new BusinessException("商品分类不存在：「" + dto.getCategoryName().trim() + "」");
             }
+            assertCategoryEnabledForNewProduct(cat);
             return cat.getId();
+        }
+        SysCategory def = sysCategoryMapper.selectById(1L);
+        if (def != null) {
+            assertCategoryEnabledForNewProduct(def);
         }
         return 1L;
     }
@@ -202,6 +228,8 @@ public class ProductServiceImpl implements ProductService {
         String qPayload;
         try {
             qPayload = ImagePayloadUtil.toPngDataUrl(req.getImageBase64().trim());
+        } catch (BusinessException e) {
+            throw e;
         } catch (Exception e) {
             throw new BusinessException("无法解析查询图片，请上传有效的图片文件");
         }
@@ -323,7 +351,7 @@ public class ProductServiceImpl implements ProductService {
         product.setCategoryName(dto.getCategoryName());
         product.setCostPrice(dto.getCostPrice());
         product.setSalePrice(dto.getSalePrice());
-        product.setStatus(dto.getStatus() != null ? dto.getStatus() : "在售");
+        product.setStatus("在售");
         product.setImage(dto.getImage());
         product.setDescription(dto.getDescription());
         product.setStock(dto.getInitialStock() != null ? dto.getInitialStock() : 0);
@@ -422,15 +450,28 @@ public class ProductServiceImpl implements ProductService {
             }
         }
 
+        Long mergedCategoryId = dto.getCategoryId() != null ? dto.getCategoryId() : existing.getCategoryId();
+        String mergedCategoryName = dto.getCategoryName() != null ? dto.getCategoryName().trim()
+                : (existing.getCategoryName() != null ? existing.getCategoryName().trim() : "");
+        SysCategory categoryRow = sysCategoryMapper.selectById(mergedCategoryId);
+        if (categoryRow == null || categoryRow.getDeleted() == 1) {
+            throw new BusinessException("商品分类不存在");
+        }
+        boolean categoryUnchanged = Objects.equals(mergedCategoryId, existing.getCategoryId())
+                && mergedCategoryName.equals(existing.getCategoryName() == null ? "" : existing.getCategoryName().trim());
+        if (isCategoryDisabled(categoryRow) && !categoryUnchanged) {
+            throw new BusinessException("商品分类「" + categoryRow.getName() + "」已禁用，请选择启用中的分类");
+        }
+
         existing.setCode(dto.getCode() != null ? dto.getCode() : existing.getCode());
         existing.setName(dto.getName() != null ? dto.getName() : existing.getName());
         existing.setBrand(dto.getBrand());
         existing.setSpec(dto.getSpec());
-        existing.setCategoryId(dto.getCategoryId() != null ? dto.getCategoryId() : existing.getCategoryId());
+        existing.setCategoryId(mergedCategoryId);
         existing.setCategoryName(dto.getCategoryName() != null ? dto.getCategoryName() : existing.getCategoryName());
         existing.setCostPrice(dto.getCostPrice() != null ? dto.getCostPrice() : existing.getCostPrice());
         existing.setSalePrice(dto.getSalePrice() != null ? dto.getSalePrice() : existing.getSalePrice());
-        existing.setStatus(dto.getStatus() != null ? dto.getStatus() : existing.getStatus());
+        existing.setStatus(existing.getStatus());
         existing.setImage(dto.getImage());
         existing.setDescription(dto.getDescription());
         // 注意：编辑商品时不允许修改库存，库存只能通过入库/出库操作变更

@@ -30,13 +30,42 @@ body {
   box-shadow: $shadow-light;
 }
 
+// 表格 show-overflow-tooltip 气泡：EP 将气泡 append 到 div.el-table（tableWrapper），用后代选择器 + !important 压过 floating-ui 内联宽度
+// App.vue 的 table.tooltipOptions.popperClass（ep-table-overflow-tooltip）作补充，见文件末段
+
+// 列表 el-table-column 列宽约定：
+// - 金额（¥ + 整数 + 小数 2 位）：min-width 约 112–120，避免用固定 width="90" 被截断
+// - 日期时间（yyyy-MM-dd HH:mm:ss）：min-width 约 176–184；仅日期可 120 左右
+// - 长文本：min-width + show-overflow-tooltip；勿对全体 .cell 设 nowrap（会撑破长文本列）
 .el-table {
   --el-table-header-bg-color: #{$bg-color};
   --el-table-row-hover-bg-color: #{rgba($primary-color, 0.05)};
 
+  th.el-table__cell,
+  td.el-table__cell {
+    min-width: 0;
+  }
+
   th.el-table__cell {
     font-weight: 600;
     color: $text-color-secondary;
+  }
+
+  // 悬停提示：限制最大宽度并换行，避免占满整屏
+  .el-tooltip__popper,
+  .el-popper[role='tooltip'] {
+    max-width: min(420px, calc(100vw - 48px)) !important;
+    min-width: 0 !important;
+    box-sizing: border-box !important;
+  }
+
+  .el-tooltip__popper .el-popper__content,
+  .el-popper[role='tooltip'] .el-popper__content {
+    max-width: 100% !important;
+    white-space: normal !important;
+    word-break: break-word;
+    overflow-wrap: anywhere;
+    line-height: 1.5;
   }
 
   // 图 + 标题型商品单元格：标题单行省略（若有规格等副行仍可换行显示）
@@ -52,16 +81,6 @@ body {
         overflow: hidden;
         text-overflow: ellipsis;
       }
-    }
-  }
-}
-
-// 与分页器同区块的列表表（el-card / el-dialog）：列内不换行，短文本尽量完整展示，过长列请配合 show-overflow-tooltip
-:is(.el-card, .el-dialog):has(.pagination-wrapper) {
-  .el-table {
-    th.el-table__cell .cell,
-    td.el-table__cell .cell {
-      white-space: nowrap;
     }
   }
 }
@@ -281,4 +300,19 @@ body {
     align-items: center;
     gap: 16px;
   }
+}
+
+// ConfigProvider table.tooltipOptions.popperClass 补充（与 .el-table 内规则一致）
+.el-popper__content.ep-table-overflow-tooltip,
+.el-tooltip__popper.ep-table-overflow-tooltip {
+  max-width: min(420px, calc(100vw - 48px)) !important;
+  box-sizing: border-box !important;
+  white-space: normal !important;
+  word-break: break-word;
+  overflow-wrap: anywhere;
+  line-height: 1.5;
+}
+
+.el-tooltip__popper.ep-table-overflow-tooltip .el-popper__content {
+  max-width: 100% !important;
 }

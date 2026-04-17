@@ -7,6 +7,20 @@ description: >-
 
 # 智链进销存总览（API + CLI）
 
+## 编辑与写操作前确认（强制）
+
+在**执行任何会改动系统或仓库状态的操作之前**，必须先向用户**说明拟执行动作**（含影响范围、关键参数：路径、环境、`id`/单号、请求体或文件变更摘要等），并得到用户**明确同意**（例如「确认」「可以执行」「按这个来」）后，才可执行。
+
+涵盖但不限于：
+
+- **代码与配置**：创建/修改/删除仓库内文件、批量替换、会改写工作区或生成物的命令。
+- **业务写操作**：`psims` 或 HTTP 中一切**非幂等或会改数据**的调用（各域技能的 `create`/`update`/`delete`/`cancel`/`confirm` 等）。
+- **环境与依赖**：用户未事先声明可自动执行时，`npm install` 等会写入磁盘的操作；直接改库、清缓存等。
+
+**可不经确认**：只读排查（读文件、`list`/`get`/统计等纯读接口）、纯口头方案及文档说明。
+
+若用户已在**同一条消息**中明确授权某一具体动作（含范围），可视为已确认，但执行前仍应**简短复述**将运行的命令或写入点，避免误操作。
+
 ## 能力与作用
 
 业务侧提供 **HTTP JSON API**。**本技能自带 `psims` CLI 全部源码**（与本 `SKILL.md` 同级的 `psi-cli/`），**不依赖仓库其它目录**；单独拷贝 `psi-smart-ims-overview/` 即可安装运行。
@@ -86,6 +100,21 @@ cd psi-cli && npm install && npm link
 # Bash 下可用单引号包住 JSON，避免转义双引号
 psims products list -q '{"current":1,"size":10}'
 ```
+
+### GET 查询串编码（Tomcat / Agent 手写 URL）
+
+嵌入式 Tomcat 按 **RFC 7230** 校验 HTTP 请求行：**请求目标里不能出现未做百分号编码的非 ASCII**（例如中文若原样出现在 `?keyword=` 之后）。技能或脚本调接口时若拼出「明文中文查询串」，典型异常为：
+
+```text
+java.lang.IllegalArgumentException: Invalid character found in the request target
+```
+
+约定与排障：
+
+- **`psims ... list -q '{"keyword":"中文",...}'`**：由 axios 将 `-q` JSON 展开为查询参数并做 UTF-8 百分号编码，**可直接写中文**，无需手工转义。
+- **手写 `curl`、把完整 URL 贴进浏览器地址栏、或 Agent 用 `fetch`/`http.get` 且 URL 字符串内含未编码中文**：必须对每个查询值使用 **`encodeURIComponent`**（或等价方式）；否则凡带 `keyword` 等文本筛选的 **GET**（如 `/products`、`/inventory`、`/sales/orders` 等）均可能触发上述错误。
+- **Knife4j / Swagger「Try it out」**：若工具发出的请求行未编码，同样会 400；排障时优先用 `psims` 对照。
+- **本仓库**：后端 `application.yml` 中 `server.tomcat.relaxed-query-chars` 仅放宽 **部分 ASCII**（如 `[]{}|`），**不能替代中文编码**；前端 `psi-manage-system-front/src/api/index.js` 已对 GET 使用 `URLSearchParams` 序列化。
 
 ### 写操作 Body
 

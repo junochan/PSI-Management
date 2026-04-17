@@ -32,7 +32,7 @@
         <div class="stat-item">
           <div class="stat-icon"><el-icon><Money /></el-icon></div>
           <div class="stat-content">
-            <span class="stat-value">¥{{ supplierStats.amount?.toLocaleString() }}</span>
+            <span class="stat-value">¥{{ formatAmountDisplay(supplierStats.amount ?? 0) }}</span>
             <span class="stat-label">总采购额</span>
           </div>
         </div>
@@ -58,7 +58,7 @@
           <template #default="{ row }">{{ row.totalQuantity }} 套</template>
         </el-table-column>
         <el-table-column label="金额" width="100">
-          <template #default="{ row }"><span class="amount">¥{{ row.amount?.toLocaleString() }}</span></template>
+          <template #default="{ row }"><span class="amount">¥{{ formatAmountDisplay(row.amount ?? 0) }}</span></template>
         </el-table-column>
         <el-table-column label="入库状态" width="100">
           <template #default="{ row }">
@@ -70,7 +70,7 @@
             <el-tag :type="getPayStatusType(row.payStatus)" effect="light">{{ formatPayStatus(row.payStatus) }}</el-tag>
           </template>
         </el-table-column>
-        <el-table-column label="创建时间" width="140">
+        <el-table-column label="创建时间" width="176">
           <template #default="{ row }">{{ formatTime(row.createTime) }}</template>
         </el-table-column>
         <el-table-column label="操作" width="80">
@@ -91,6 +91,7 @@ import { useUserStore } from '@/stores/user'
 import { supplierApi, purchaseApi } from '@/api'
 import { formatTime } from '@/utils/time'
 import { firstProductImageUrl } from '@/utils/productImages'
+import { formatAmountDisplay } from '@/utils/moneyFormat'
 
 const router = useRouter()
 const route = useRoute()

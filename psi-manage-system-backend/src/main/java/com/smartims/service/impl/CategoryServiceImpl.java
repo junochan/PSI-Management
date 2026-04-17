@@ -38,9 +38,18 @@ public class CategoryServiceImpl implements CategoryService {
     private final ProductMapper productMapper;
 
     @Override
-    public List<SysCategory> getAllCategories() {
+    public List<SysCategory> listCategories(Integer status, String name, String code) {
         LambdaQueryWrapper<SysCategory> queryWrapper = new LambdaQueryWrapper<>();
         queryWrapper.eq(SysCategory::getDeleted, 0);
+        if (status != null) {
+            queryWrapper.eq(SysCategory::getStatus, status);
+        }
+        if (StringUtils.hasText(name)) {
+            queryWrapper.like(SysCategory::getName, name.trim());
+        }
+        if (StringUtils.hasText(code)) {
+            queryWrapper.like(SysCategory::getCode, code.trim());
+        }
         queryWrapper.orderByAsc(SysCategory::getSort);
         return sysCategoryMapper.selectList(queryWrapper);
     }

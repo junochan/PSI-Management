@@ -12,6 +12,7 @@ import com.smartims.mapper.*;
 import com.smartims.security.UserContext;
 import com.smartims.service.SalesService;
 import com.smartims.util.CodeGenerator;
+import com.smartims.util.StatusNameResolver;
 import com.smartims.vo.SalesStatsVO;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -177,11 +178,9 @@ public class SalesServiceImpl implements SalesService {
             throw new BusinessException("客户不存在");
         }
 
-        // 验证商品
+        // 验证商品（停售不可新建销售单）
         Product product = productMapper.selectById(dto.getProductId());
-        if (product == null || product.getDeleted() == 1) {
-            throw new BusinessException("商品不存在");
-        }
+        assertProductOrderableForSales(product, null);
 
         // 验证库存：未指定发货仓库时按全仓可用库存汇总校验；指定仓库时校验该仓库存
         if (dto.getWarehouseId() != null) {
@@ -248,6 +247,19 @@ public class SalesServiceImpl implements SalesService {
         }
     }
 
+    private void assertProductOrderableForSales(Product product, Long previousOrderProductId) {
+        if (product == null || product.getDeleted() == 1) {
+            throw new BusinessException("商品不存在");
+        }
+        if (!StatusNameResolver.isProductOffSale(product.getStatus())) {
+            return;
+        }
+        if (previousOrderProductId != null && previousOrderProductId.equals(product.getId())) {
+            return;
+        }
+        throw new BusinessException("该商品已停售，无法用于新建销售单或更换为该商品");
+    }
+
     /**
      * 商品在各仓库可用库存之和（未删除的库存行）。
      */
@@ -304,11 +316,9 @@ public class SalesServiceImpl implements SalesService {
             throw new BusinessException("客户不存在");
         }
 
-        // 验证商品
+        // 验证商品（停售仅允许订单未更换商品时保留）
         Product product = productMapper.selectById(dto.getProductId());
-        if (product == null || product.getDeleted() == 1) {
-            throw new BusinessException("商品不存在");
-        }
+        assertProductOrderableForSales(product, order.getProductId());
 
         order.setCustomerId(dto.getCustomerId());
         order.setCustomerName(customer.getName());
@@ -423,18 +433,12 @@ public class SalesServiceImpl implements SalesService {
         order.setPendingQuantity(newPendingQty);
         order.setWarehouseId(dto.getWarehouseId());
         order.setWarehouseName(warehouse.getName());
-        order.setLogisticsCompany(dto.getLogisticsCompany());
-        order.setLogisticsNo(dto.getLogisticsNo());
+        order.setLogisticsCompany(dto.getLogisticsCompany().trim());
+        order.setLogisticsNo(dto.getLogisticsNo().trim());
         order.setShipTime(LocalDateTime.now());
-        if (StringUtils.hasText(dto.getReceiverName())) {
-            order.setReceiverName(dto.getReceiverName().trim());
-        }
-        if (StringUtils.hasText(dto.getReceiverPhone())) {
-            order.setReceiverPhone(dto.getReceiverPhone().trim());
-        }
-        if (StringUtils.hasText(dto.getReceiverAddress())) {
-            order.setReceiverAddress(dto.getReceiverAddress().trim());
-        }
+        order.setReceiverName(dto.getReceiverName().trim());
+        order.setReceiverPhone(dto.getReceiverPhone().trim());
+        order.setReceiverAddress(dto.getReceiverAddress().trim());
         if (dto.getRemark() != null) {
             order.setRemark(dto.getRemark());
         }

@@ -7,6 +7,20 @@ description: >-
 
 # 上传图片后的默认查货流程（图搜图 → 库存 → 订单）
 
+## 编辑与写操作前确认（强制）
+
+在**执行任何会改动系统或仓库状态的操作之前**，必须先向用户**说明拟执行动作**（含影响范围、关键参数：路径、环境、`id`/单号、请求体或文件变更摘要等），并得到用户**明确同意**（例如「确认」「可以执行」「按这个来」）后，才可执行。
+
+涵盖但不限于：
+
+- **代码与配置**：创建/修改/删除仓库内文件、批量替换、会改写工作区或生成物的命令。
+- **业务写操作**：`psims` 或 HTTP 中一切**会改数据或非纯查询**的调用（本流程默认以只读查货为主，若延伸为下单/改库等写操作，必须先确认）。
+- **环境与依赖**：用户未事先声明可自动执行时，`npm install` 等会写入磁盘的操作。
+
+**可不经确认**：按本技能工作流执行的**只读**图搜、库存与订单拉数（`list`/`get` 等）。
+
+若用户已在**同一条消息**中明确授权某一具体动作（含范围），可视为已确认，但执行前仍应**简短复述**将运行的命令或写入点，避免误操作。
+
 ## 何时启用
 
 在 **smart-ims / PSI 进销存** 相关对话中，若同时满足：
@@ -27,6 +41,7 @@ description: >-
 
 - **HTTP**：`POST /api/v1/products/search-by-image`（网关前缀以部署为准）  
 - **Body**：图片检索请求 JSON，其中 **`imageBase64` 必填**；可设 `page`、`size`（建议首查 `size` 为 **5～10**，避免漏检）。  
+- **`similarityThreshold`（图搜图相似度阈值）**：**默认 `0.7`**。若请求中传入该字段，**不得小于 `0.5`**；若用户或上游给出的值低于 `0.5`，在组请求前应**钳制为 `0.5`** 并可在回复中简要说明。  
 - **超时**：建议 **120s**（向量检索较慢）。
 
 **CLI**：`psims products search-image -d '<json>'` 或 `-f body.json`（需已 `psims auth login`）。
@@ -66,11 +81,13 @@ psims purchase orders list -q "{\"productId\":123,\"page\":1,\"size\":20}"
 
 售后工单列表若需关联，通常可通过 **销售订单号** 或界面跳转关联；是否支持 `productId` 以实际接口返回为准，**不必臆造字段**。
 
+**GET 含中文的 `keyword` 等**（如下表销售/采购订单列表）：须 URL 编码，否则 Tomcat 报 `Invalid character found in the request target`；`psims ... list -q` 由 axios 编码；手写 URL 须 `encodeURIComponent`。详见 **`psi-smart-ims-overview`** →「GET 查询串编码（Tomcat / Agent 手写 URL）」。
+
 ## 接口参数清单（按技能内接口）
 
 | 接口 | 路径参数 | Query 参数 | Body 参数 | 文件参数 |
 |------|----------|------------|-----------|----------|
-| `POST /products/search-by-image` | 无 | 无 | `page`(可选),`size`(可选),`keyword`(可选),`categoryName`(可选),`status`(可选),`imageBase64`(必填),`similarityThreshold`(可选) | 无 |
+| `POST /products/search-by-image` | 无 | 无 | `page`(可选),`size`(可选),`keyword`(可选),`categoryName`(可选),`status`(可选),`imageBase64`(必填),`similarityThreshold`(可选，**默认 0.7**；若传入则 **≥ 0.5**) | 无 |
 | `GET /inventory/product/{productId}` | `productId`(必填) | 无 | 无 | 无 |
 | `GET /sales/orders` | 无 | `productId`(建议必传),`page`(可选),`size`(可选),`sort`(可选),`order`(可选),`keyword`(可选),`warehouseId`(可选),`customerId`(可选),`supplierId`(可选),`categoryName`(可选),`productStatus`(可选),`stagnantStatus`(可选),`inboundStatus`(可选),`payStatus`(可选),`salesOrderStatus`(可选),`aftersalesStatus`(可选),`lastOutboundStart`(可选),`lastOutboundEnd`(可选),`lastInboundStart`(可选),`lastInboundEnd`(可选),`expectDateStart`(可选),`expectDateEnd`(可选),`createTimeStart`(可选),`createTimeEnd`(可选),`operatorName`(可选) | 无 | 无 |
 | `GET /purchase/orders` | 无 | `productId`(建议必传),`page`(可选),`size`(可选),`sort`(可选),`order`(可选),`keyword`(可选),`warehouseId`(可选),`customerId`(可选),`supplierId`(可选),`categoryName`(可选),`productStatus`(可选),`stagnantStatus`(可选),`inboundStatus`(可选),`payStatus`(可选),`salesOrderStatus`(可选),`aftersalesStatus`(可选),`lastOutboundStart`(可选),`lastOutboundEnd`(可选),`lastInboundStart`(可选),`lastInboundEnd`(可选),`expectDateStart`(可选),`expectDateEnd`(可选),`createTimeStart`(可选),`createTimeEnd`(可选),`operatorName`(可选) | 无 | 无 |

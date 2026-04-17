@@ -56,19 +56,19 @@
             </div>
             <div class="stat-item">
               <span class="stat-label">采购金额</span>
-              <span class="stat-value amount">¥{{ purchaseOrderSummary.totalAmount.toLocaleString() }}</span>
+              <span class="stat-value amount">¥{{ formatAmountDisplay(purchaseOrderSummary.totalAmount) }}</span>
             </div>
             <div class="stat-item">
               <span class="stat-label">已付款</span>
-              <span class="stat-value success">¥{{ purchaseOrderSummary.paidAmount.toLocaleString() }}</span>
+              <span class="stat-value success">¥{{ formatAmountDisplay(purchaseOrderSummary.paidAmount) }}</span>
             </div>
             <div class="stat-item">
               <span class="stat-label">待付款</span>
-              <span class="stat-value warning">¥{{ purchaseOrderSummary.unpaidAmount.toLocaleString() }}</span>
+              <span class="stat-value warning">¥{{ formatAmountDisplay(purchaseOrderSummary.unpaidAmount) }}</span>
             </div>
             <div class="stat-item">
               <span class="stat-label">已退款</span>
-              <span class="stat-value info">¥{{ purchaseOrderSummary.refundedAmount.toLocaleString() }}</span>
+              <span class="stat-value info">¥{{ formatAmountDisplay(purchaseOrderSummary.refundedAmount) }}</span>
             </div>
           </div>
           <el-table :data="purchaseOrderTableRows" empty-text="暂无数据" style="width: 100%" :max-height="500">
@@ -108,7 +108,7 @@
             </el-table-column>
             <el-table-column label="金额" min-width="100" align="right" show-overflow-tooltip>
               <template #default="{ row }">
-                <span class="amount">¥{{ (row.amount || 0).toLocaleString() }}</span>
+                <span class="amount">¥{{ formatAmountDisplay(row.amount || 0) }}</span>
               </template>
             </el-table-column>
             <el-table-column label="入库状态" width="90" align="center">
@@ -126,7 +126,7 @@
                 <span :class="{ 'overdue': isExpectDateOverdue(row.expectDate) && row.inboundStatus !== 'completed' }">{{ formatExpectDate(row.expectDate) }}</span>
               </template>
             </el-table-column>
-            <el-table-column label="下单时间" prop="createTime" min-width="120" show-overflow-tooltip />
+            <el-table-column label="下单时间" prop="createTime" width="176" show-overflow-tooltip />
             <el-table-column label="操作" width="140" fixed="right" align="center">
               <template #default="{ row }">
                 <el-button v-if="canViewPurchase" type="primary" link size="small" @click="viewPurchaseOrder(row)">详情</el-button>
@@ -213,7 +213,7 @@
             <el-table-column label="仓库" min-width="120" show-overflow-tooltip>
               <template #default="{ row }">{{ getWarehouseName(row.warehouseId) || row.warehouseName || row.warehouse }}</template>
             </el-table-column>
-            <el-table-column label="入库时间" width="160" show-overflow-tooltip>
+            <el-table-column label="入库时间" width="176" show-overflow-tooltip>
               <template #default="{ row }">{{ row.createTime || row.time }}</template>
             </el-table-column>
             <el-table-column label="操作人" width="100" show-overflow-tooltip>
@@ -268,7 +268,7 @@
               </div>
               <div class="supplier-stat">
                 <span class="stat-label">总采购额</span>
-                <span class="stat-value">¥{{ s.amount?.toLocaleString() }}</span>
+                <span class="stat-value">¥{{ formatAmountDisplay(s.amount ?? 0) }}</span>
               </div>
             </div>
             <div class="supplier-contact">
@@ -319,7 +319,7 @@
                 @change="onProductChange"
               >
                 <el-option
-                  v-for="p in productList"
+                  v-for="p in productListForNewOrder"
                   :key="p.id"
                   :label="p.name"
                   :value="p.id"
@@ -366,7 +366,7 @@
         <el-row :gutter="20">
           <el-col :span="24">
             <el-form-item label="采购金额">
-              <el-input :value="`¥${(purchaseForm.totalQuantity * purchaseForm.price).toLocaleString()}`" disabled />
+              <el-input :value="`¥${formatAmountDisplay(purchaseForm.totalQuantity * purchaseForm.price || 0)}`" disabled />
             </el-form-item>
           </el-col>
         </el-row>
@@ -464,7 +464,7 @@
           </div>
         </el-descriptions-item>
         <el-descriptions-item label="数量">{{ currentOrder?.totalQuantity || currentOrder?.quantity }}</el-descriptions-item>
-        <el-descriptions-item label="金额">¥{{ currentOrder?.amount?.toLocaleString() }}</el-descriptions-item>
+        <el-descriptions-item label="金额">¥{{ formatAmountDisplay(currentOrder?.amount ?? 0) }}</el-descriptions-item>
         <el-descriptions-item label="入库状态">
           <el-tag :type="getInboundStatusType(currentOrder?.inboundStatus)">{{ formatInboundStatus(currentOrder?.inboundStatus) }}</el-tag>
         </el-descriptions-item>
@@ -489,6 +489,8 @@ import { useDataStore } from '@/stores/data'
 import { useUserStore } from '@/stores/user'
 import { productApi, purchaseApi, supplierApi, warehouseApi } from '@/api'
 import { firstProductImageUrl } from '@/utils/productImages'
+import { formatAmountDisplay } from '@/utils/moneyFormat'
+import { isProductSelectableForOrder } from '@/utils/productStatus'
 
 const router = useRouter()
 const dataStore = useDataStore()
@@ -565,6 +567,8 @@ const purchaseStats = ref({
 
 // 数据从后端获取
 const productList = computed(() => dataStore.products || [])
+/** 新建采购单商品下拉：排除停售（列表筛选仍用全部商品） */
+const productListForNewOrder = computed(() => productList.value.filter(isProductSelectableForOrder))
 const suppliersList = computed(() => dataStore.suppliers || [])
 const supplierIndustriesList = computed(() => dataStore.supplierIndustries || [])
 const warehousesList = computed(() => dataStore.warehouses || [])

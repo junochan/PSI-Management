@@ -45,15 +45,15 @@
             </div>
             <div class="stat-item">
               <span class="stat-label">订单总额</span>
-              <span class="stat-value amount">¥{{ orderListSummary.totalAmount.toLocaleString() }}</span>
+              <span class="stat-value amount">¥{{ formatAmountDisplay(orderListSummary.totalAmount) }}</span>
             </div>
             <div class="stat-item">
               <span class="stat-label">待付款</span>
-              <span class="stat-value warning">¥{{ orderListSummary.unpaidAmount.toLocaleString() }}</span>
+              <span class="stat-value warning">¥{{ formatAmountDisplay(orderListSummary.unpaidAmount) }}</span>
             </div>
             <div class="stat-item">
               <span class="stat-label">已付款</span>
-              <span class="stat-value success">¥{{ orderListSummary.paidAmount.toLocaleString() }}</span>
+              <span class="stat-value success">¥{{ formatAmountDisplay(orderListSummary.paidAmount) }}</span>
             </div>
           </div>
           <el-table :data="salesOrderTableRows" empty-text="暂无数据" style="width: 100%" :max-height="500">
@@ -70,7 +70,7 @@
                 </div>
               </template>
             </el-table-column>
-            <el-table-column label="商品" width="150" show-overflow-tooltip>
+            <el-table-column label="商品" min-width="220" show-overflow-tooltip>
               <template #default="{ row }">
                 <div class="product-cell-mini">
                   <img v-if="getProductImage(row.productId)" :src="getProductImage(row.productId)" class="product-thumb-mini" />
@@ -82,8 +82,8 @@
             <el-table-column label="数量" width="70" align="center">
               <template #default="{ row }">{{ row.quantity }}</template>
             </el-table-column>
-            <el-table-column label="金额" width="90" align="right">
-              <template #default="{ row }"><span class="amount">{{ row.amount }}</span></template>
+            <el-table-column label="金额" min-width="116" align="right">
+              <template #default="{ row }"><span class="amount">¥{{ formatAmountDisplay(row.amount ?? 0) }}</span></template>
             </el-table-column>
             <el-table-column label="状态" width="80" align="center">
               <template #default="{ row }"><el-tag :type="getStatusType(row.status)" effect="light" size="small">{{ formatOrderStatus(row.status) }}</el-tag></template>
@@ -91,7 +91,7 @@
             <el-table-column label="付款" width="80" align="center">
               <template #default="{ row }"><el-tag :type="getPayStatusType(row.payStatus)" effect="light" size="small">{{ formatPayStatus(row.payStatus) }}</el-tag></template>
             </el-table-column>
-            <el-table-column label="时间" prop="createTime" width="120" />
+            <el-table-column label="时间" prop="createTime" width="176" show-overflow-tooltip />
             <el-table-column label="操作" width="220" fixed="right" align="center">
               <template #default="{ row }">
                 <el-button type="primary" link size="small" @click="viewSalesOrder(row)">详情</el-button>
@@ -150,7 +150,7 @@
             <div class="customer-stats">
               <div class="customer-stat">
                 <span class="stat-label">累计消费</span>
-                <span class="stat-value">¥{{ (c.totalAmount || 0).toLocaleString() }}</span>
+                <span class="stat-value">¥{{ formatAmountDisplay(c.totalAmount || 0) }}</span>
               </div>
               <div class="customer-stat">
                 <span class="stat-label">订单数</span>
@@ -207,7 +207,7 @@
             <el-table-column label="状态" width="90" align="center">
               <template #default="{ row }"><el-tag :type="getAftersalesStatusType(row.status)" effect="light" size="small">{{ formatAftersalesStatus(row.status) }}</el-tag></template>
             </el-table-column>
-            <el-table-column label="创建时间" prop="createTime" width="140" show-overflow-tooltip />
+            <el-table-column label="创建时间" prop="createTime" width="176" show-overflow-tooltip />
             <el-table-column label="操作" width="80" fixed="right" align="center">
               <template #default="{ row }">
                 <el-button type="primary" link size="small" @click="viewAftersalesDetail(row)">详情</el-button>
@@ -248,7 +248,7 @@
           <el-col :span="12">
             <el-form-item label="商品选择" prop="productId">
               <el-select v-model="salesForm.productId" placeholder="请选择商品" style="width: 100%" filterable @change="onSalesProductChange">
-                <el-option v-for="p in products" :key="p.id" :label="p.name" :value="p.id" />
+                <el-option v-for="p in productsForNewSalesOrder" :key="p.id" :label="p.name" :value="p.id" />
               </el-select>
             </el-form-item>
           </el-col>
@@ -395,7 +395,14 @@
           </el-col>
         </el-row>
         <el-form-item label="问题描述" prop="content">
-          <el-input v-model="aftersalesForm.content" type="textarea" :rows="3" placeholder="请详细描述问题" />
+          <el-input
+            v-model="aftersalesForm.content"
+            type="textarea"
+            :rows="3"
+            maxlength="500"
+            show-word-limit
+            placeholder="请详细描述问题（最多500字）"
+          />
         </el-form-item>
         <el-form-item label="期望处理">
           <el-select v-model="aftersalesForm.expect" style="width: 100%">
@@ -430,7 +437,7 @@
         <el-descriptions-item label="处理人">{{ currentAftersales?.handlerName || '-' }}</el-descriptions-item>
         <el-descriptions-item label="处理结果" :span="2">{{ currentAftersales?.handleResult || '-' }}</el-descriptions-item>
         <el-descriptions-item label="退款金额" :span="2" v-if="currentAftersales?.refundAmount">
-          <span class="amount">¥{{ currentAftersales?.refundAmount }}</span>
+          <span class="amount">¥{{ formatAmountDisplay(currentAftersales?.refundAmount) }}</span>
         </el-descriptions-item>
         <el-descriptions-item label="处理时间">{{ currentAftersales?.handleTime || '-' }}</el-descriptions-item>
         <el-descriptions-item label="备注">{{ currentAftersales?.remark || '-' }}</el-descriptions-item>
@@ -458,8 +465,15 @@
         <el-form-item label="退款金额" v-if="handleAftersalesForm.handleResult.includes('退款')">
           <el-input-number v-model="handleAftersalesForm.refundAmount" :min="0" :precision="2" style="width: 100%" />
         </el-form-item>
-        <el-form-item label="处理备注">
-          <el-input v-model="handleAftersalesForm.remark" type="textarea" :rows="3" placeholder="输入处理备注" />
+        <el-form-item label="处理备注" prop="remark">
+          <el-input
+            v-model="handleAftersalesForm.remark"
+            type="textarea"
+            :rows="3"
+            maxlength="500"
+            show-word-limit
+            placeholder="输入处理备注（最多500字）"
+          />
         </el-form-item>
       </el-form>
       <template #footer>
@@ -475,7 +489,7 @@
         <el-descriptions-item label="客户">{{ currentOrder?.customer }}</el-descriptions-item>
         <el-descriptions-item label="商品">{{ currentOrder?.product }}</el-descriptions-item>
         <el-descriptions-item label="数量">{{ currentOrder?.quantity }}</el-descriptions-item>
-        <el-descriptions-item label="金额">{{ currentOrder?.amount }}</el-descriptions-item>
+        <el-descriptions-item label="金额">¥{{ formatAmountDisplay(currentOrder?.amount ?? 0) }}</el-descriptions-item>
         <el-descriptions-item label="订单状态"><el-tag :type="getStatusType(currentOrder?.status)">{{ formatOrderStatus(currentOrder?.status) }}</el-tag></el-descriptions-item>
         <el-descriptions-item label="付款状态"><el-tag :type="getPayStatusType(currentOrder?.payStatus)">{{ formatPayStatus(currentOrder?.payStatus) }}</el-tag></el-descriptions-item>
         <el-descriptions-item label="下单时间">{{ currentOrder?.createTime }}</el-descriptions-item>
@@ -600,6 +614,8 @@ import dayjs from 'dayjs'
 import relativeTime from 'dayjs/plugin/relativeTime'
 import 'dayjs/locale/zh-cn'
 import { firstProductImageUrl } from '@/utils/productImages'
+import { formatAmountDisplay } from '@/utils/moneyFormat'
+import { isProductSelectableForOrder } from '@/utils/productStatus'
 
 dayjs.extend(relativeTime)
 dayjs.locale('zh-cn')
@@ -675,6 +691,8 @@ const salesStats = ref({
 // 数据从后端获取（store 中订单为下拉等场景保留较全量）
 const salesOrders = computed(() => dataStore.salesOrders || [])
 const products = computed(() => dataStore.products || [])
+/** 新建销售单下拉：排除停售 */
+const productsForNewSalesOrder = computed(() => products.value.filter(isProductSelectableForOrder))
 const customers = computed(() => dataStore.customers || [])
 const filteredCustomers = computed(() => {
   let result = customers.value
@@ -893,13 +911,17 @@ const customerRules = {
 const aftersalesForm = ref({ salesOrderId: null, type: '质量问题', content: '', expect: '退货退款' })
 const aftersalesRules = {
   salesOrderId: [{ required: true, message: '请选择关联订单', trigger: 'change' }],
-  content: [{ required: true, message: '请描述问题', trigger: 'blur' }]
+  content: [
+    { required: true, message: '请描述问题', trigger: 'blur' },
+    { max: 500, message: '问题描述不能超过500个字符', trigger: 'blur' }
+  ]
 }
 
 // 处理售后表单
 const handleAftersalesForm = ref({ handleResult: '', refundAmount: 0, remark: '' })
 const handleAftersalesRules = {
-  handleResult: [{ required: true, message: '请选择处理结果', trigger: 'change' }]
+  handleResult: [{ required: true, message: '请选择处理结果', trigger: 'change' }],
+  remark: [{ max: 500, message: '处理备注不能超过500个字符', trigger: 'blur' }]
 }
 
 const shipForm = ref({
@@ -952,7 +974,7 @@ const resolveCustomerForShipment = async (customerId) => {
 }
 const getSalePrice = () => {
   const p = products.value.find(p => p.id === salesForm.value.productId)
-  return p ? `¥${p.salePrice}` : ''
+  return p ? `¥${formatAmountDisplay(p.salePrice)}` : ''
 }
 
 // 状态格式化函数 - 英文转中文
@@ -1600,8 +1622,13 @@ onMounted(async () => {
     }
 
     .product-name-mini {
+      flex: 1;
+      min-width: 0;
       font-size: 13px;
       color: #303133;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
     }
   }
 

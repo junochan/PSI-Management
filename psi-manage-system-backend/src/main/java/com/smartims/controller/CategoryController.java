@@ -26,10 +26,14 @@ public class CategoryController {
 
     private final CategoryService categoryService;
 
-    @Operation(summary = "获取所有分类列表")
+    @Operation(summary = "获取分类列表",
+            description = "status：不传不按状态过滤；1 仅启用；0 仅禁用。name、code 可选，分别对分类名称、编码模糊查询（同时传为 AND）")
     @GetMapping
-    public Result<List<SysCategory>> getAllCategories() {
-        List<SysCategory> categories = categoryService.getAllCategories();
+    public Result<List<SysCategory>> listCategories(
+            @RequestParam(required = false) Integer status,
+            @RequestParam(required = false) String name,
+            @RequestParam(required = false) String code) {
+        List<SysCategory> categories = categoryService.listCategories(status, name, code);
         return Result.success(categories);
     }
 

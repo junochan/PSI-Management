@@ -7,6 +7,20 @@ description: >-
 
 # 商品与商品分类
 
+## 编辑与写操作前确认（强制）
+
+在**执行任何会改动系统或仓库状态的操作之前**，必须先向用户**说明拟执行动作**（含影响范围、关键参数：路径、环境、`id`/单号、请求体或文件变更摘要等），并得到用户**明确同意**（例如「确认」「可以执行」「按这个来」）后，才可执行。
+
+涵盖但不限于：
+
+- **代码与配置**：创建/修改/删除仓库内文件、批量替换、会改写工作区或生成物的命令。
+- **业务写操作**：`psims` 或 HTTP 中带商品/分类的 `create`、`update`、`delete`、批量删除、导入任务、图片上传等**会改数据或非纯查询**的调用。
+- **环境与依赖**：用户未事先声明可自动执行时，`npm install` 等会写入磁盘的操作；直接改库、清缓存等。
+
+**可不经确认**：只读排查（读文件、`list`/`get`/导入进度只读查询、以图搜图只读拉数等）、纯口头方案及文档说明。
+
+若用户已在**同一条消息**中明确授权某一具体动作（含范围），可视为已确认，但执行前仍应**简短复述**将运行的命令或写入点，避免误操作。
+
 ## 功能与作用
 
 - **商品**：维护 SKU、价格、库存相关主数据；支持 **主图上传**（multipart）、**Excel 异步批量导入**（`POST /products/import` 返回 `jobId`，`GET /products/import/{jobId}` 查进度）与 **以图搜图**（向量相似度，较慢）。
@@ -14,6 +28,8 @@ description: >-
 - **批量删除**：一次提交多个商品 id，对应 `DELETE /products/batch`。
 
 适用于商品列表、商品新增/编辑/详情、分类维护与批量导入场景。
+
+**GET 含中文的 `keyword`**：`GET /products` 的查询串须 UTF-8 百分号编码；未编码时 Tomcat 报 `Invalid character found in the request target`。`psims products list -q '{"keyword":"红"}'` 由 axios 自动编码；手写 URL/curl 须 `encodeURIComponent`。完整说明见技能 **`psi-smart-ims-overview`** →「GET 查询串编码（Tomcat / Agent 手写 URL）」。
 
 ## CLI 调用
 

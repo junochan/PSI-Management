@@ -95,10 +95,10 @@
                 <el-tag :type="getStockStatusType(row.status)" effect="light" size="small">{{ formatStockStatus(row.status) }}</el-tag>
               </template>
             </el-table-column>
-            <el-table-column label="最后出库" min-width="178" show-overflow-tooltip>
+            <el-table-column label="最后出库" width="176" show-overflow-tooltip>
               <template #default="{ row }">{{ row.lastOutboundTime || '-' }}</template>
             </el-table-column>
-            <el-table-column label="最后入库" min-width="178" show-overflow-tooltip>
+            <el-table-column label="最后入库" width="176" show-overflow-tooltip>
               <template #default="{ row }">{{ row.lastInboundTime || '-' }}</template>
             </el-table-column>
             <el-table-column label="呆滞状态" min-width="90" align="center">
@@ -154,8 +154,10 @@
             <el-table-column label="状态" width="88" align="center">
               <template #default="{ row }"><el-tag :type="getTransferStatusType(row.status)" effect="light" size="small">{{ formatTransferStatus(row.status) }}</el-tag></template>
             </el-table-column>
-            <el-table-column label="创建时间" prop="createTime" min-width="176" show-overflow-tooltip />
-            <el-table-column label="操作人" prop="operatorName" min-width="100" show-overflow-tooltip />
+            <el-table-column label="创建时间" prop="createTime" width="176" show-overflow-tooltip />
+            <el-table-column label="操作人" min-width="100" show-overflow-tooltip>
+              <template #default="{ row }">{{ row.operatorName || row.operator || '-' }}</template>
+            </el-table-column>
             <el-table-column label="操作" width="120" fixed="right" align="center">
               <template #default="{ row }">
                 <el-button type="primary" link size="small" @click="viewTransferDetail(row)">详情</el-button>
@@ -206,7 +208,7 @@
                 <el-table-column label="仓库" min-width="120" show-overflow-tooltip>
                   <template #default="{ row }">{{ getWarehouseName(row.warehouseId) || row.warehouseName || row.warehouse }}</template>
                 </el-table-column>
-                <el-table-column label="入库时间" min-width="176" show-overflow-tooltip>
+                <el-table-column label="入库时间" width="176" show-overflow-tooltip>
                   <template #default="{ row }">{{ row.createTime || row.time }}</template>
                 </el-table-column>
                 <el-table-column label="操作人" width="100" show-overflow-tooltip>
@@ -249,7 +251,7 @@
                 <el-table-column label="仓库" min-width="120" show-overflow-tooltip>
                   <template #default="{ row }">{{ getWarehouseName(row.warehouseId) || row.warehouseName || row.warehouse }}</template>
                 </el-table-column>
-                <el-table-column label="出库时间" min-width="176" show-overflow-tooltip>
+                <el-table-column label="出库时间" width="176" show-overflow-tooltip>
                   <template #default="{ row }">{{ row.createTime || row.time }}</template>
                 </el-table-column>
                 <el-table-column label="操作人" width="100" show-overflow-tooltip>
@@ -502,8 +504,8 @@
         <el-descriptions-item label="呆滞状态">
           <el-tag :type="getStagnantStatusType(currentStock)" effect="light">{{ getStagnantStatusText(currentStock) }}</el-tag>
         </el-descriptions-item>
-        <el-descriptions-item label="成本价">¥{{ currentStock?.costPrice }}</el-descriptions-item>
-        <el-descriptions-item label="库存价值"><span class="amount">¥{{ currentStock?.stockValue }}</span></el-descriptions-item>
+        <el-descriptions-item label="成本价">¥{{ formatAmountDisplay(currentStock?.costPrice ?? 0) }}</el-descriptions-item>
+        <el-descriptions-item label="库存价值"><span class="amount">¥{{ formatAmountDisplay(currentStock?.stockValue ?? 0) }}</span></el-descriptions-item>
         <el-descriptions-item label="库存状态">
           <el-tag :type="getStockStatusType(currentStock?.status)" effect="light">{{ formatStockStatus(currentStock?.status) }}</el-tag>
         </el-descriptions-item>
@@ -520,7 +522,7 @@
         <el-table-column label="数量" width="80" align="center">
           <template #default="{ row }">{{ row.quantity }}</template>
         </el-table-column>
-        <el-table-column label="时间" width="120">
+        <el-table-column label="时间" width="176" show-overflow-tooltip>
           <template #default="{ row }">{{ row.createTime }}</template>
         </el-table-column>
         <el-table-column label="操作人">
@@ -537,7 +539,7 @@
         <el-table-column label="数量" width="80" align="center">
           <template #default="{ row }">{{ row.quantity }}</template>
         </el-table-column>
-        <el-table-column label="时间" width="120">
+        <el-table-column label="时间" width="176" show-overflow-tooltip>
           <template #default="{ row }">{{ row.createTime }}</template>
         </el-table-column>
         <el-table-column label="操作人">
@@ -550,7 +552,7 @@
         <el-button v-if="canInventoryInbound" type="success" @click="openStockInbound(currentStock)">入库</el-button>
         <el-button v-if="canInventoryOutbound" type="warning" @click="openStockOutbound(currentStock)">出库</el-button>
         <el-button
-          v-if="canPurchaseAdd && currentStock?.stock < currentStock?.safeStock"
+          v-if="canShowCreatePurchaseInStockDetail"
           type="primary"
           @click="openPurchaseFromStock(currentStock)"
         >创建采购</el-button>
@@ -613,7 +615,7 @@
         <el-row :gutter="20">
           <el-col :span="12">
             <el-form-item label="采购金额">
-              <el-input :value="`¥${(purchaseForm.quantity * purchaseForm.unitPrice || 0).toLocaleString()}`" disabled />
+              <el-input :value="`¥${formatAmountDisplay(purchaseForm.quantity * purchaseForm.unitPrice || 0)}`" disabled />
             </el-form-item>
           </el-col>
           <el-col :span="12">
@@ -796,7 +798,7 @@
           <el-col :span="12">
             <el-form-item label="选择商品" prop="productId">
               <el-select v-model="manualInboundForm.productId" placeholder="请选择商品" style="width: 100%" filterable>
-                <el-option v-for="p in products" :key="p.id" :label="p.name" :value="p.id" />
+                <el-option v-for="p in productsForManualOtherInbound" :key="p.id" :label="p.name" :value="p.id" />
               </el-select>
             </el-form-item>
           </el-col>
@@ -932,6 +934,9 @@ import { useDataStore } from '@/stores/data'
 import { useUserStore } from '@/stores/user'
 import { inventoryApi, warehouseApi, purchaseApi, salesApi } from '@/api'
 import { firstProductImageUrl } from '@/utils/productImages'
+import { MAX_IMAGE_UPLOAD_BYTES } from '@/utils/uploadLimits'
+import { formatAmountDisplay } from '@/utils/moneyFormat'
+import { isProductSelectableForOrder, canShortcutPurchaseForStock } from '@/utils/productStatus'
 
 const router = useRouter()
 const route = useRoute()
@@ -1089,6 +1094,8 @@ const inventoryStats = ref({
 const inventoryData = computed(() => dataStore.inventoryData || [])
 const transfers = computed(() => dataStore.transfers || [])
 const products = computed(() => dataStore.products || [])
+/** 手动入库「其他入库」选商品：与采购一致排除停售 */
+const productsForManualOtherInbound = computed(() => products.value.filter(isProductSelectableForOrder))
 const warehousesList = computed(() => dataStore.warehouses || [])
 const categoriesList = computed(() => dataStore.categories || [])
 const suppliersList = computed(() => dataStore.suppliers || [])
@@ -1096,6 +1103,13 @@ const inboundRecords = computed(() => dataStore.inboundRecords || [])
 const outboundRecords = computed(() => dataStore.outboundRecords || [])
 const purchaseOrders = computed(() => dataStore.purchaseOrders || [])
 const salesOrders = computed(() => dataStore.salesOrders || [])
+
+/** 库存详情弹窗「创建采购」：停售商品不展示快捷入口 */
+const canShowCreatePurchaseInStockDetail = computed(() => {
+  if (!canPurchaseAdd.value || !currentStock.value) return false
+  if ((currentStock.value.stock ?? 0) >= (currentStock.value.safeStock ?? 0)) return false
+  return canShortcutPurchaseForStock(currentStock.value, products.value)
+})
 
 // 当前库存的入库记录
 const stockInboundRecords = computed(() => {
@@ -1283,6 +1297,10 @@ const loadData = async () => {
 const onInventoryQueryImageChange = (uploadFile) => {
   const raw = uploadFile?.raw
   if (!raw) return
+  if (raw.size > MAX_IMAGE_UPLOAD_BYTES) {
+    ElMessage.warning('查询图片大小不能超过 2MB')
+    return
+  }
   const reader = new FileReader()
   reader.onload = (e) => {
     queryImageDataUrl.value = e.target.result
@@ -2012,6 +2030,10 @@ const createPurchaseFromStock = async (row) => {
 
 // 打开采购弹框 - 回填数据
 const openPurchaseFromStock = (stock) => {
+  if (!canShortcutPurchaseForStock(stock, products.value)) {
+    ElMessage.warning('该商品已停售，无法创建采购单')
+    return
+  }
   const product = products.value.find(p => p.id === stock.productId)
   purchaseForm.value = {
     productId: stock.productId,

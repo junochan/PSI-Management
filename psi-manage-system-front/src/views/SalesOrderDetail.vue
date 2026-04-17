@@ -26,8 +26,8 @@
           <el-tag type="info" effect="light">{{ productCategoryName }}</el-tag>
         </el-descriptions-item>
         <el-descriptions-item label="订购数量"><span class="total-qty">{{ order?.quantity }}</span></el-descriptions-item>
-        <el-descriptions-item label="销售单价"><span class="unit-price">¥{{ order?.unitPrice || (order?.amount && order?.quantity ? (order?.amount / order?.quantity).toFixed(2) : '0.00') }}</span></el-descriptions-item>
-        <el-descriptions-item label="订单金额"><span class="amount">¥{{ order?.amount }}</span></el-descriptions-item>
+        <el-descriptions-item label="销售单价"><span class="unit-price">¥{{ formatSalesOrderUnitPrice(order) }}</span></el-descriptions-item>
+        <el-descriptions-item label="订单金额"><span class="amount">¥{{ formatAmountDisplay(order?.amount ?? 0) }}</span></el-descriptions-item>
         <el-descriptions-item label="已发货"><span class="shipped-qty">{{ shippedQuantity }}</span></el-descriptions-item>
         <el-descriptions-item label="待发货"><span class="pending-qty">{{ pendingQuantity }}</span></el-descriptions-item>
         <el-descriptions-item label="订单状态"><el-tag :type="getStatusType(order?.status)">{{ formatOrderStatus(order?.status) }}</el-tag></el-descriptions-item>
@@ -83,6 +83,7 @@ import { useRouter, useRoute } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { categoryApi, customerApi, productApi, salesApi, warehouseApi } from '@/api'
 import { formatTime } from '@/utils/time'
+import { formatAmountDisplay } from '@/utils/moneyFormat'
 import { firstProductImageUrl } from '@/utils/productImages'
 
 const router = useRouter()
@@ -90,6 +91,16 @@ const route = useRoute()
 
 const orderId = computed(() => route.params.id)
 const order = ref(null)
+
+/** 优先展示后端单价；否则用金额÷数量推算，格式与全局金额规则一致 */
+const formatSalesOrderUnitPrice = (o) => {
+  if (!o) return formatAmountDisplay(0)
+  if (o.unitPrice != null && o.unitPrice !== '') return formatAmountDisplay(o.unitPrice)
+  const q = Number(o.quantity)
+  const a = Number(o.amount)
+  if (q > 0 && !Number.isNaN(a)) return formatAmountDisplay(a / q)
+  return formatAmountDisplay(0)
+}
 const productDetail = ref(null)
 const warehouseDetail = ref(null)
 const customerDetail = ref(null)
@@ -220,7 +231,16 @@ const stepDescriptions = computed(() => {
     o.payStatus === '已付款' ||
     o.status === 'completed' ||
     o.status === '已完成'
-  const shipDesc = o.logisticsNo
+  const hasLogisticsNo = Boolean(String(o.logisticsNo ?? '').trim())
+  const sq = Number(o.shippedQuantity)
+  const hasShipProgress =
+    hasLogisticsNo ||
+    o.status === 'shipped' ||
+    o.status === '已发货' ||
+    o.status === 'completed' ||
+    o.status === '已完成' ||
+    (Number.isFinite(sq) && sq > 0)
+  const shipDesc = hasShipProgress
     ? `已发货 ${shippedQuantity.value}${suffix(o.shipTime)}`
     : o.status === 'pending' || o.status === '待发货'
       ? `待发货 ${pendingQuantity.value}`
@@ -241,8 +261,16 @@ const getStepActive = () => {
   if (order.value?.status === 'completed' || order.value?.status === '已完成') return 4
   // 已取消状态，停留在第一步
   if (order.value?.status === 'cancelled' || order.value?.status === '已取消') return 1
-  // 已发货状态，进行到第三步
-  if (order.value?.logisticsNo || order.value?.status === 'shipped' || order.value?.status === '已发货') return 3
+  // 已发货状态，进行到第三步（与进度文案一致：有单号 / 状态已推进 / 已有发货数量）
+  const sq = Number(order.value?.shippedQuantity)
+  if (
+    String(order.value?.logisticsNo ?? '').trim() ||
+    order.value?.status === 'shipped' ||
+    order.value?.status === '已发货' ||
+    (Number.isFinite(sq) && sq > 0)
+  ) {
+    return 3
+  }
   // 已付款状态，进行到第二步
   if (order.value?.payStatus === 'paid' || order.value?.payStatus === '已付款') return 2
   // 待发货且未付款，停留在第一步

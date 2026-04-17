@@ -11,6 +11,7 @@ import com.smartims.mapper.ProductMapper;
 import com.smartims.mapper.SalesOrderMapper;
 import com.smartims.service.DashboardService;
 import com.smartims.service.SalesService;
+import com.smartims.service.SystemConfigService;
 import com.smartims.vo.DashboardOverviewVO;
 import com.smartims.vo.SalesStatsVO;
 import lombok.RequiredArgsConstructor;
@@ -39,6 +40,7 @@ public class DashboardServiceImpl implements DashboardService {
     private final ProductMapper productMapper;
     private final CustomerMapper customerMapper;
     private final InventoryMapper inventoryMapper;
+    private final SystemConfigService systemConfigService;
 
     /** 与 {@link com.smartims.service.impl.SalesServiceImpl#getSalesStats()} 中「计入销售额」的口径一致 */
     private static boolean countsTowardRevenue(SalesOrder o) {
@@ -90,12 +92,45 @@ public class DashboardServiceImpl implements DashboardService {
         recentQ.eq(SalesOrder::getDeleted, 0)
                 .orderByDesc(SalesOrder::getCreateTime)
                 .last("LIMIT 10");
-        vo.setRecentOrders(salesOrderMapper.selectList(recentQ));
+        List<SalesOrder> recentOrders = salesOrderMapper.selectList(recentQ);
+        enrichRecentOrdersProductImage(recentOrders);
+        vo.setRecentOrders(recentOrders);
 
         vo.setInventoryWarningTop10(buildWarningTop10());
         vo.setInventoryStagnantTop10(buildStagnantTop10());
 
         return vo;
+    }
+
+    /** 近期订单行展示商品缩略图：从商品表回填 {@link SalesOrder#getProductImage()} */
+    private void enrichRecentOrdersProductImage(List<SalesOrder> orders) {
+        if (orders == null || orders.isEmpty()) {
+            return;
+        }
+        Set<Long> productIds = orders.stream()
+                .map(SalesOrder::getProductId)
+                .filter(Objects::nonNull)
+                .collect(Collectors.toSet());
+        if (productIds.isEmpty()) {
+            return;
+        }
+        List<Product> products = productMapper.selectList(
+                new LambdaQueryWrapper<Product>().in(Product::getId, productIds));
+        Map<Long, String> imageByProductId = new HashMap<>();
+        for (Product p : products) {
+            if (p.getId() != null && p.getImage() != null && !p.getImage().isBlank()) {
+                imageByProductId.put(p.getId(), p.getImage());
+            }
+        }
+        for (SalesOrder o : orders) {
+            if (o.getProductId() == null) {
+                continue;
+            }
+            String img = imageByProductId.get(o.getProductId());
+            if (img != null) {
+                o.setProductImage(img);
+            }
+        }
     }
 
     private List<DashboardOverviewVO.SalesTrendPoint> buildTrend(LocalDate start, LocalDate end, List<SalesOrder> orders) {
@@ -259,9 +294,11 @@ public class DashboardServiceImpl implements DashboardService {
         List<Inventory> all = inventoryMapper.selectList(q);
         List<DashboardOverviewVO.InventoryStagnantRow> rows = new ArrayList<>();
         LocalDateTime now = LocalDateTime.now();
+        Integer cfgStale = systemConfigService.getSystemConfig().getStaleDays();
+        int defaultStaleDays = (cfgStale != null && cfgStale >= 1) ? cfgStale : 90;
         for (Inventory i : all) {
             long sd = computeStagnantDays(i, now);
-            int threshold = i.getStagnantDays() != null ? i.getStagnantDays() : 90;
+            int threshold = i.getStagnantDays() != null ? i.getStagnantDays() : defaultStaleDays;
             if (sd < threshold) {
                 continue;
             }

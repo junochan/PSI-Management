@@ -9,10 +9,13 @@ import com.smartims.dto.PageQuery;
 import com.smartims.entity.AftersalesOrder;
 import com.smartims.entity.Customer;
 import com.smartims.entity.SalesOrder;
+import com.smartims.entity.SysUser;
 import com.smartims.exception.BusinessException;
 import com.smartims.mapper.AftersalesOrderMapper;
 import com.smartims.mapper.CustomerMapper;
 import com.smartims.mapper.SalesOrderMapper;
+import com.smartims.mapper.SysUserMapper;
+import com.smartims.security.UserContext;
 import com.smartims.service.AftersalesService;
 import com.smartims.util.CodeGenerator;
 import lombok.RequiredArgsConstructor;
@@ -43,6 +46,7 @@ public class AftersalesServiceImpl implements AftersalesService {
     private final AftersalesOrderMapper aftersalesOrderMapper;
     private final SalesOrderMapper salesOrderMapper;
     private final CustomerMapper customerMapper;
+    private final SysUserMapper sysUserMapper;
 
     @Override
     public PageResult<AftersalesOrder> getAftersalesList(PageQuery pageQuery) {
@@ -159,6 +163,21 @@ public class AftersalesServiceImpl implements AftersalesService {
         order.setRefundAmount(dto.getRefundAmount());
         order.setHandleTime(LocalDateTime.now());
         order.setRemark(dto.getRemark());
+
+        Long handlerId = UserContext.getCurrentUserId();
+        order.setHandlerId(handlerId);
+        String handlerDisplay = UserContext.getCurrentUsername();
+        if (handlerId != null) {
+            SysUser handler = sysUserMapper.selectById(handlerId);
+            if (handler != null) {
+                if (StringUtils.hasText(handler.getName())) {
+                    handlerDisplay = handler.getName();
+                } else if (StringUtils.hasText(handler.getUsername())) {
+                    handlerDisplay = handler.getUsername();
+                }
+            }
+        }
+        order.setHandlerName(handlerDisplay);
 
         aftersalesOrderMapper.updateById(order);
         log.info("处理售后工单成功：id={}", id);

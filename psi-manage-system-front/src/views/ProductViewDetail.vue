@@ -31,8 +31,8 @@
         <el-descriptions-item label="品牌">{{ product?.brand || '-' }}</el-descriptions-item>
         <el-descriptions-item label="规格">{{ product?.spec || '-' }}</el-descriptions-item>
         <el-descriptions-item label="分类">{{ product?.categoryName || product?.category || '-' }}</el-descriptions-item>
-        <el-descriptions-item label="成本价">¥{{ product?.costPrice }}</el-descriptions-item>
-        <el-descriptions-item label="销售价"><span class="sale-price">¥{{ product?.salePrice }}</span></el-descriptions-item>
+        <el-descriptions-item label="成本价">¥{{ formatAmountDisplay(product?.costPrice ?? 0) }}</el-descriptions-item>
+        <el-descriptions-item label="销售价"><span class="sale-price">¥{{ formatAmountDisplay(product?.salePrice ?? 0) }}</span></el-descriptions-item>
         <el-descriptions-item label="状态">
           <el-tag :type="product?.status === '在售' ? 'success' : 'info'">
             {{ product?.status }}
@@ -53,6 +53,7 @@ import { ElMessage } from 'element-plus'
 import { useUserStore } from '@/stores/user'
 import { productApi } from '@/api'
 import { formatTime } from '@/utils/time'
+import { formatAmountDisplay } from '@/utils/moneyFormat'
 import { parseProductImageUrls } from '@/utils/productImages'
 
 const router = useRouter()
@@ -164,7 +165,6 @@ onMounted(() => {
 
   .product-code {
     color: #606266;
-    font-family: monospace;
   }
 
   .sale-price {

@@ -23,7 +23,7 @@
                 <el-tag :type="row.status === 1 ? 'success' : 'info'" effect="light" size="small">{{ row.status === 1 ? '正常' : '禁用' }}</el-tag>
               </template>
             </el-table-column>
-            <el-table-column label="最后登录" min-width="184" show-overflow-tooltip>
+            <el-table-column label="最后登录" width="176" show-overflow-tooltip>
               <template #default="{ row }">{{ formatTime(row.lastLoginTime) }}</template>
             </el-table-column>
             <el-table-column label="操作" min-width="168" align="center" fixed="right">
@@ -148,7 +148,7 @@
       <el-tab-pane label="操作日志" name="logs">
         <el-card>
           <el-table :data="paginatedLogs" empty-text="暂无数据" style="width: 100%" :max-height="500" table-layout="fixed">
-            <el-table-column label="时间" min-width="184" show-overflow-tooltip>
+            <el-table-column label="时间" width="176" show-overflow-tooltip>
               <template #default="{ row }">{{ formatTime(row.createTime) }}</template>
             </el-table-column>
             <el-table-column label="用户名" prop="userName" min-width="120" show-overflow-tooltip />

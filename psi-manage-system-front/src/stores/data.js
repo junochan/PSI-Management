@@ -1,6 +1,6 @@
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
-import { productApi, supplierApi, supplierIndustryApi, customerApi, warehouseApi, purchaseApi, salesApi, inventoryApi, aftersalesApi, userApi, operationLogApi, categoryApi } from '@/api'
+import { productApi, supplierApi, supplierIndustryApi, customerApi, warehouseApi, purchaseApi, salesApi, inventoryApi, aftersalesApi, userApi, operationLogApi, categoryApi, CATEGORY_STATUS } from '@/api'
 import { useUserStore } from '@/stores/user'
 
 export const useDataStore = defineStore('data', () => {
@@ -147,11 +147,11 @@ export const useDataStore = defineStore('data', () => {
     }
   }
 
-  // 加载商品分类
+  // 加载商品分类（仅启用，供商品/库存等下拉；分类管理页自行调用 categoryApi.list 不带 status）
   const loadCategories = async () => {
     categoriesLoading.value = true
     try {
-      const res = await categoryApi.list()
+      const res = await categoryApi.list({ status: CATEGORY_STATUS.ENABLED })
       categories.value = res || []
     } catch (error) {
       console.error('加载分类失败:', error)

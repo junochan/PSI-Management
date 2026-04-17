@@ -21,7 +21,7 @@
           <el-col :span="12">
             <el-form-item label="商品" prop="productId">
               <el-select v-model="orderForm.productId" style="width: 100%" filterable @change="onProductChange">
-                <el-option v-for="p in products" :key="p.id" :label="p.name" :value="p.id" />
+                <el-option v-for="p in productSelectOptions" :key="p.id" :label="p.name" :value="p.id" />
               </el-select>
             </el-form-item>
           </el-col>
@@ -64,7 +64,7 @@
         <el-row :gutter="20">
           <el-col :span="12">
             <el-form-item label="采购金额">
-              <el-input :value="`¥${(orderForm.amount || 0).toLocaleString()}`" disabled />
+              <el-input :value="`¥${formatAmountDisplay(orderForm.amount || 0)}`" disabled />
             </el-form-item>
           </el-col>
           <el-col :span="12">
@@ -98,6 +98,8 @@ import { useRouter, useRoute } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { productApi, purchaseApi, supplierApi } from '@/api'
 import { firstProductImageUrl } from '@/utils/productImages'
+import { formatAmountDisplay } from '@/utils/moneyFormat'
+import { isProductSelectableForOrder } from '@/utils/productStatus'
 
 const router = useRouter()
 const route = useRoute()
@@ -130,6 +132,12 @@ const orderRules = {
 
 const suppliers = ref([])
 const products = ref([])
+/** 编辑时下拉可选：在售 + 当前订单商品（避免历史停售单无法展示） */
+const productSelectOptions = computed(() => {
+  const list = products.value || []
+  const keepId = orderForm.value.productId
+  return list.filter(p => isProductSelectableForOrder(p) || p.id === keepId)
+})
 
 // 选中商品的图片
 const selectedProductImage = computed(() => {

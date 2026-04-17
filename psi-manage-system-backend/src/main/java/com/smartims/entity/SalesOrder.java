@@ -38,6 +38,12 @@ public class SalesOrder implements Serializable {
 
     private String sku;
 
+    /**
+     * 非表字段：列表/仪表盘等场景由服务根据商品回填首图（与 product.image 一致）
+     */
+    @TableField(exist = false)
+    private String productImage;
+
     private BigDecimal unitPrice;
 
     private Integer quantity;

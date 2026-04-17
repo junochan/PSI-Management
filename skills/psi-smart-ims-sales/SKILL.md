@@ -7,13 +7,31 @@ description: >-
 
 # 销售（订单履约）
 
+## 编辑与写操作前确认（强制）
+
+在**执行任何会改动系统或仓库状态的操作之前**，必须先向用户**说明拟执行动作**（含影响范围、关键参数：路径、环境、`id`/单号、请求体或文件变更摘要等），并得到用户**明确同意**（例如「确认」「可以执行」「按这个来」）后，才可执行。
+
+涵盖但不限于：
+
+- **代码与配置**：创建/修改/删除仓库内文件、批量替换、会改写工作区或生成物的命令。
+- **业务写操作**：`psims` 或 HTTP 中带 `create`、`update`、`delete`、`cancel`、付款/发货/收货等**会改数据或非纯查询**的调用。
+- **环境与依赖**：用户未事先声明可自动执行时，`npm install` 等会写入磁盘的操作；直接改库、清缓存等。
+
+**可不经确认**：只读排查（读文件、`list`/`get`/统计等纯读接口）、纯口头方案及文档说明。
+
+若用户已在**同一条消息**中明确授权某一具体动作（含范围），可视为已确认，但执行前仍应**简短复述**将运行的命令或写入点，避免误操作。
+
 ## 功能与作用
 
 销售订单典型流程：**创建/修改** → **付款** → **发货**（填写物流等）→ **收货** → 或 **取消**。统计接口用于仪表盘与销售分析。
 
 适用于销售单详情、履约流转与销售统计场景。
 
+**GET 含中文的 `keyword` 等**：须 URL 编码，否则 Tomcat 报 `Invalid character found in the request target`；`psims sales orders list -q` 由 axios 编码。详见 **`psi-smart-ims-overview`** →「GET 查询串编码（Tomcat / Agent 手写 URL）」。
+
 **说明**：发货列表无独立 REST 资源；在途/已发状态以 **销售订单** 列表与详情字段为准。确认发货请使用 **`POST /sales/orders/{id}/shipping`**（CLI：`psims sales orders shipping <id>`）。
+
+**发货请求体**：`warehouseId`、`quantity`、**`logisticsCompany`、`logisticsNo`、`receiverName`、`receiverPhone`、`receiverAddress` 为必填**（与前端发货表单一致）；服务端对 `ShippingDTO` 做 Bean 校验，缺省或空串会返回校验错误。`receiverPhone` 最长 100 字符（兼容主号与备用号合并）。已有库若仍为 `varchar(20)`，请执行 `docs/database/patch_sales_order_receiver_phone_v100.sql`。
 
 ## CLI 调用
 
@@ -56,7 +74,7 @@ psims sales stats
 | `POST /sales/orders` | 无 | 无 | `customerId`(必填),`productId`(必填),`quantity`(必填),`unitPrice`(必填),`warehouseId`(可选),`payMethod`(可选),`receiverName`(可选),`receiverPhone`(可选),`receiverAddress`(可选),`remark`(可选) | 无 |
 | `PUT /sales/orders/{id}` | `id`(必填) | 无 | 同 `POST /sales/orders` 字段 | 无 |
 | `PUT /sales/orders/{id}/payment` | `id`(必填) | 无 | 无 | 无 |
-| `POST /sales/orders/{id}/shipping` | `id`(必填) | 无 | `warehouseId`(必填),`quantity`(必填),`logisticsCompany`(可选),`logisticsNo`(可选),`receiverName`(可选),`receiverPhone`(可选),`receiverAddress`(可选),`remark`(可选) | 无 |
+| `POST /sales/orders/{id}/shipping` | `id`(必填) | 无 | `warehouseId`(必填),`quantity`(必填),`logisticsCompany`(必填),`logisticsNo`(必填),`receiverName`(必填),`receiverPhone`(必填),`receiverAddress`(必填),`remark`(可选) | 无 |
 | `PUT /sales/orders/{id}/received` | `id`(必填) | 无 | 无 | 无 |
 | `PUT /sales/orders/{id}/cancel` | `id`(必填) | 无 | 无 | 无 |
 | `GET /sales/stats` | 无 | 无 | 无 | 无 |

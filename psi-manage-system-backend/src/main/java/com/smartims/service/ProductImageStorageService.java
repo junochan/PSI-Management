@@ -22,6 +22,7 @@ import java.util.UUID;
 public class ProductImageStorageService {
 
     private static final String UPLOAD_SUB = "uploads/products";
+    private static final long MAX_IMAGE_BYTES = 2L * 1024 * 1024;
     private static final Set<String> ALLOWED_CT = Set.of(
             "image/jpeg", "image/png", "image/gif", "image/webp"
     );
@@ -35,6 +36,9 @@ public class ProductImageStorageService {
     public String saveProductImage(MultipartFile file) throws IOException {
         if (file == null || file.isEmpty()) {
             throw new BusinessException("请选择图片文件");
+        }
+        if (file.getSize() > MAX_IMAGE_BYTES) {
+            throw new BusinessException("图片大小不能超过 2MB");
         }
         String ct = file.getContentType();
         if (ct == null || !ALLOWED_CT.contains(ct.toLowerCase(Locale.ROOT))) {

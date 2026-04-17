@@ -38,8 +38,11 @@
           <span class="chart-card-title">分类销售 Top5</span>
         </template>
         <div v-if="categoryData.length" class="category-list">
-          <div class="category-item" v-for="cat in categoryData" :key="cat.name">
-            <div class="category-icon" :style="{ background: cat.bgColor }">{{ cat.emoji }}</div>
+          <div class="category-item" v-for="(cat, index) in categoryData" :key="cat.name + '-' + index">
+            <div
+              class="category-rank"
+              :class="{ 'top-1': index === 0, 'top-2': index === 1, 'top-3': index === 2 }"
+            >{{ index + 1 }}</div>
             <div class="category-info">
               <h4>{{ cat.name }}</h4>
               <div class="category-bar">
@@ -161,7 +164,7 @@
         <el-table-column label="商品信息" min-width="160" show-overflow-tooltip>
           <template #default="{ row }">
             <div class="product-cell">
-              <img v-if="getProductImage(row.productId)" :src="getProductImage(row.productId)" class="product-thumb" />
+              <img v-if="getProductImage(row)" :src="getProductImage(row)" class="product-thumb" />
               <div v-else class="product-icon">{{ row.productIcon }}</div>
               <div class="product-info">
                 <h4 class="product-info-title">{{ row.product }}</h4>
@@ -173,7 +176,7 @@
         <el-table-column label="客户" prop="customer" width="184" show-overflow-tooltip />
         <el-table-column label="金额" width="120" align="right">
           <template #default="{ row }">
-            <span class="amount">¥{{ formatOrderAmount(row.amount) }}</span>
+            <span class="amount">¥{{ formatAmountDisplay(row.amount ?? 0) }}</span>
           </template>
         </el-table-column>
         <el-table-column label="状态" width="102" align="center">
@@ -184,7 +187,7 @@
         <el-table-column
           label="下单时间"
           prop="createTime"
-          width="210"
+          width="176"
           class-name="col-order-time"
           show-overflow-tooltip
         />
@@ -204,6 +207,7 @@ import { useRouter } from 'vue-router'
 import * as echarts from 'echarts'
 import { dashboardApi } from '@/api'
 import { firstProductImageUrl } from '@/utils/productImages'
+import { formatAmountDisplay } from '@/utils/moneyFormat'
 
 const router = useRouter()
 
@@ -213,12 +217,8 @@ const loading = ref(false)
 /** 后端聚合的仪表盘数据 */
 const overview = ref(null)
 
-/** 金额：实际数值，千分位，保留两位小数 */
-const formatCurrency = (amount) => {
-  const n = Number(amount)
-  if (Number.isNaN(n)) return '¥0.00'
-  return `¥${n.toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
-}
+/** 金额：千分位；有小数则两位，整数不带小数 */
+const formatCurrency = (amount) => `¥${formatAmountDisplay(amount ?? 0)}`
 
 // 统计卡片：与 /sales/stats、商品/客户总数一致
 const statistics = computed(() => {
@@ -243,14 +243,11 @@ const statistics = computed(() => {
 const categoryData = computed(() => {
   const list = overview.value?.categorySalesTop5 || []
   const colors = ['#8B5CF6', '#00d26a', '#3b82f6', '#f0a500', '#e94560']
-  const emojis = ['📱', '👕', '🍔', '🏠', '💄']
   return list.map((cat, i) => ({
     name: cat.categoryName,
     value: Number(cat.amount) || 0,
-    emoji: emojis[i % emojis.length],
     amount: formatCurrency(cat.amount),
     percent: cat.percent ?? 0,
-    bgColor: `rgba(${colors[i % colors.length].slice(1)}, 0.2)`,
     barColor: colors[i % colors.length]
   }))
 })
@@ -323,17 +320,8 @@ const getStockStatusText = (item) => {
   return '正常'
 }
 
-const formatOrderAmount = (v) => {
-  const n = Number(v)
-  if (Number.isNaN(n)) return '—'
-  return n.toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
-}
-
-// 获取商品图片
-const getProductImage = (productId) => {
-  const row = (overview.value?.recentOrders || []).find((o) => Number(o.productId) === Number(productId))
-  return firstProductImageUrl(row?.productImage || row?.image)
-}
+// 获取商品图片（后端近期订单会带 productImage；与商品表 image 字段格式一致）
+const getProductImage = (row) => firstProductImageUrl(row?.productImage || row?.image)
 
 // 商品名称以仪表盘接口返回为准
 const getProductName = (productId, fallbackName) => {
@@ -376,7 +364,7 @@ const initSalesChart = () => {
       trigger: 'axis',
       formatter: (params) => {
         const p = params[0]
-        const amt = Number(p.value).toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+        const amt = formatAmountDisplay(Number(p.value))
         return `${p.axisValue}<br/>销售额: ¥${amt}`
       }
     },
@@ -399,8 +387,7 @@ const initSalesChart = () => {
       axisLine: { show: false },
       axisLabel: {
         color: '#909399',
-        formatter: (v) =>
-          `¥${Number(v).toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+        formatter: (v) => `¥${formatAmountDisplay(Number(v))}`
       },
       splitLine: { lineStyle: { color: '#E4E7ED' } }
     },
@@ -580,14 +567,33 @@ onMounted(() => {
             border-bottom: none;
           }
 
-          .category-icon {
-            width: 48px;
-            height: 48px;
-            border-radius: 12px;
+          .category-rank {
+            width: 32px;
+            height: 32px;
+            border-radius: 10px;
             display: flex;
             align-items: center;
             justify-content: center;
-            font-size: 20px;
+            font-size: 15px;
+            font-weight: 700;
+            flex-shrink: 0;
+            background: #F5F7FA;
+            color: #909399;
+
+            &.top-1 {
+              background: #E94560;
+              color: #fff;
+            }
+
+            &.top-2 {
+              background: #E6A23C;
+              color: #fff;
+            }
+
+            &.top-3 {
+              background: #409EFF;
+              color: #fff;
+            }
           }
 
           .category-info {

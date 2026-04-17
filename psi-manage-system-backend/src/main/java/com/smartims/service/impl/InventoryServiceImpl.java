@@ -19,6 +19,7 @@ import com.smartims.security.UserContext;
 import com.smartims.service.InventoryEmbeddingSyncService;
 import com.smartims.service.InventoryService;
 import com.smartims.util.CodeGenerator;
+import com.smartims.util.StatusNameResolver;
 import com.smartims.vo.InventoryStatsVO;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -186,6 +187,15 @@ public class InventoryServiceImpl implements InventoryService {
         transfer.setStatus("pending"); // 待确认
         transfer.setRemark(dto.getRemark());
 
+        Long operatorId = UserContext.getCurrentUserId();
+        if (operatorId != null) {
+            transfer.setOperatorId(operatorId);
+            SysUser user = sysUserMapper.selectById(operatorId);
+            if (user != null) {
+                transfer.setOperatorName(user.getName());
+            }
+        }
+
         for (int attempt = 0; attempt < MAX_ORDER_NO_ALLOC_ATTEMPTS; attempt++) {
             transfer.setOrderNo(allocateTransferOrderNo());
             try {
@@ -332,8 +342,8 @@ public class InventoryServiceImpl implements InventoryService {
             Product product = productMapper.selectById(transfer.getProductId());
             toInventory = new Inventory();
             toInventory.setProductId(transfer.getProductId());
-            // 库存 sku 全局唯一，须按商品+仓库生成，不可复用商品编码（否则与源仓等记录冲突）
-            toInventory.setSku(CodeGenerator.generateSku(transfer.getProductId(), transfer.getToWarehouseId()));
+            // 与采购入库/手动入库一致：sku 使用商品编码；唯一性由库表 uk_sku_warehouse(sku, warehouse_id) 保证
+            toInventory.setSku(StringUtils.hasText(transfer.getSku()) ? transfer.getSku() : product.getCode());
             toInventory.setProductName(product.getName());
             toInventory.setSpec(product.getSpec());
             toInventory.setCategory(product.getCategoryName());
@@ -637,6 +647,9 @@ public class InventoryServiceImpl implements InventoryService {
         if (product == null || product.getDeleted() == 1) {
             throw new BusinessException("商品不存在");
         }
+        if (StatusNameResolver.isProductOffSale(product.getStatus())) {
+            throw new BusinessException("该商品已停售，无法通过其他入库增加库存");
+        }
 
         // 查询仓库
         Warehouse warehouse = warehouseMapper.selectById(dto.getWarehouseId());
@@ -803,6 +816,8 @@ public class InventoryServiceImpl implements InventoryService {
         String qPayload;
         try {
             qPayload = ImagePayloadUtil.toPngDataUrl(req.getImageBase64().trim());
+        } catch (BusinessException e) {
+            throw e;
         } catch (Exception e) {
             throw new BusinessException("无法解析查询图片，请上传有效的图片文件");
         }

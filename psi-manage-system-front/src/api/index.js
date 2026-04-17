@@ -1,10 +1,29 @@
 import axios from 'axios'
 import { ElMessage } from 'element-plus'
 
+/**
+ * GET/DELETE 等查询串序列化：保证非 ASCII（如中文关键词）按 UTF-8 百分号编码，
+ * 避免 Tomcat 报「Invalid character found in the request target」(RFC 7230)。
+ */
+function serializeQueryParams (params) {
+  if (!params || typeof params !== 'object') return ''
+  const usp = new URLSearchParams()
+  for (const [key, val] of Object.entries(params)) {
+    if (val === undefined || val === null) continue
+    const parts = Array.isArray(val) ? val : [val]
+    for (const v of parts) {
+      if (v === undefined || v === null) continue
+      usp.append(key, typeof v === 'object' ? JSON.stringify(v) : String(v))
+    }
+  }
+  return usp.toString()
+}
+
 // API 基础配置
 const api = axios.create({
   baseURL: '/api/v1',
   timeout: 10000,
+  paramsSerializer: { serialize: serializeQueryParams },
   headers: {
     'Content-Type': 'application/json'
   }
@@ -46,7 +65,8 @@ api.interceptors.response.use(
 // 上传专用（不设默认 JSON Content-Type，便于 multipart 自动带 boundary）
 const uploadApi = axios.create({
   baseURL: '/api/v1',
-  timeout: 120000
+  timeout: 120000,
+  paramsSerializer: { serialize: serializeQueryParams }
 })
 uploadApi.interceptors.request.use(
   config => {
@@ -237,8 +257,19 @@ export const roleApi = {
 }
 
 // 商品分类 API
+/** 与后端 SysCategory.status 一致：1 启用，0 禁用 */
+export const CATEGORY_STATUS = {
+  DISABLED: 0,
+  ENABLED: 1
+}
+
 export const categoryApi = {
-  list: () => api.get('/categories'),
+  /**
+   * @param {Record<string, unknown>} [params]
+   * - status：1 仅启用，0 仅禁用；不传不按状态过滤
+   * - name、code：可选，对分类名称 / 编码模糊查询；同时传时条件为 AND
+   */
+  list: (params) => api.get('/categories', { params: params || {} }),
   get: (id) => api.get(`/categories/${id}`),
   create: (data) => api.post('/categories', data),
   update: (id, data) => api.put(`/categories/${id}`, data),

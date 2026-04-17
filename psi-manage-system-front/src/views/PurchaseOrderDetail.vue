@@ -22,9 +22,9 @@
         <el-descriptions-item label="商品分类">
           <el-tag type="info" effect="light">{{ productCategoryName }}</el-tag>
         </el-descriptions-item>
-        <el-descriptions-item label="单价"><span class="price">¥{{ (order?.unitPrice || 0).toLocaleString() }}</span></el-descriptions-item>
+        <el-descriptions-item label="单价"><span class="price">¥{{ formatAmountDisplay(order?.unitPrice || 0) }}</span></el-descriptions-item>
         <el-descriptions-item label="采购总量"><span class="total-qty">{{ order?.totalQuantity }} 套</span></el-descriptions-item>
-        <el-descriptions-item label="采购金额"><span class="amount">¥{{ (order?.amount || 0).toLocaleString() }}</span></el-descriptions-item>
+        <el-descriptions-item label="采购金额"><span class="amount">¥{{ formatAmountDisplay(order?.amount || 0) }}</span></el-descriptions-item>
         <el-descriptions-item label="待入库"><span class="pending-qty">{{ order?.pendingQuantity }} 套</span></el-descriptions-item>
         <el-descriptions-item label="已入库"><span class="inbound-qty">{{ order?.inboundQuantity || 0 }} 套</span></el-descriptions-item>
         <el-descriptions-item label="入库状态"><el-tag :type="getInboundStatusType(order?.inboundStatus)">{{ formatInboundStatus(order?.inboundStatus) }}</el-tag></el-descriptions-item>
@@ -57,6 +57,7 @@ import { ElMessage } from 'element-plus'
 import { categoryApi, productApi, purchaseApi, supplierApi, warehouseApi } from '@/api'
 import { formatTime } from '@/utils/time'
 import { firstProductImageUrl } from '@/utils/productImages'
+import { formatAmountDisplay } from '@/utils/moneyFormat'
 
 const router = useRouter()
 const route = useRoute()

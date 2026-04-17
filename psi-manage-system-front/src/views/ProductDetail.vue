@@ -27,13 +27,13 @@
               <el-icon v-else class="product-image-uploader-icon is-loading"><Loading /></el-icon>
             </el-upload>
           </div>
-          <div class="image-tip">最多 10 张；支持 JPG、PNG、GIF、WEBP；选择后自动上传，仅保存图片地址</div>
+          <div class="image-tip">最多 10 张，单张不超过 2MB；支持 JPG、PNG、GIF、WEBP；选择后自动上传，仅保存图片地址</div>
         </el-form-item>
         <el-form-item label="商品名称" prop="name">
           <el-input v-model="productForm.name" placeholder="输入商品名称" :maxlength="100" show-word-limit />
         </el-form-item>
         <el-row :gutter="20">
-          <el-col :span="12"><el-form-item label="商品分类" prop="categoryName"><el-select v-model="productForm.categoryName" placeholder="请选择分类" style="width: 100%" filterable><el-option v-for="c in categoriesList" :key="c.id" :label="c.name" :value="c.name" /></el-select></el-form-item></el-col>
+          <el-col :span="12"><el-form-item label="商品分类" prop="categoryName"><el-select v-model="productForm.categoryName" placeholder="请选择分类" style="width: 100%" filterable><el-option v-for="c in categoriesList" :key="c.id" :label="c.name" :value="c.name" :disabled="!isCategoryEnabled(c)" /></el-select></el-form-item></el-col>
           <el-col :span="12"><el-form-item label="商品编码"><el-input v-model="productForm.code" placeholder="系统自动生成" disabled /></el-form-item></el-col>
         </el-row>
         <el-row :gutter="20">
@@ -62,14 +62,17 @@ import { ref, computed, onMounted } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { useUserStore } from '@/stores/user'
-import { categoryApi, productApi } from '@/api'
+import { categoryApi, productApi, CATEGORY_STATUS } from '@/api'
 import { parseProductImageUrls, encodeProductImagesForApi } from '@/utils/productImages'
+import { MAX_IMAGE_UPLOAD_BYTES } from '@/utils/uploadLimits'
+import { isCategoryEnabled } from '@/utils/categoryStatus'
 
 const router = useRouter()
 const route = useRoute()
 const userStore = useUserStore()
 const productFormRef = ref()
 const imageUploading = ref(false)
+/** 列表接口带 status=1；编辑时若商品挂在已禁用分类上，再合并该条以便展示 */
 const categoriesList = ref([])
 
 const productId = computed(() => route.params.id)
@@ -109,6 +112,10 @@ const productRules = {
 const handleImageChange = async (file) => {
   const raw = file?.raw
   if (!raw) return
+  if (raw.size > MAX_IMAGE_UPLOAD_BYTES) {
+    ElMessage.warning('商品图片大小不能超过 2MB')
+    return
+  }
   if (productForm.value.imageList.length >= 10) {
     ElMessage.warning('商品图片最多 10 张')
     return
@@ -146,7 +153,8 @@ onMounted(async () => {
     router.replace(`/products/view/${productId.value}`)
     return
   }
-  categoriesList.value = await categoryApi.list()
+  const enabledRes = await categoryApi.list({ status: CATEGORY_STATUS.ENABLED })
+  categoriesList.value = Array.isArray(enabledRes) ? [...enabledRes] : []
   if (editMode.value) {
     const id = Number(productId.value)
     if (!id) {
@@ -167,6 +175,16 @@ onMounted(async () => {
         description: product.description || '',
         imageList: parseProductImageUrls(product.image),
         code: product.code
+      }
+      if (product.categoryId != null) {
+        try {
+          const catRow = await categoryApi.get(product.categoryId)
+          if (catRow && !isCategoryEnabled(catRow) && !categoriesList.value.some((c) => c.id === catRow.id)) {
+            categoriesList.value = [catRow, ...categoriesList.value]
+          }
+        } catch {
+          /* 分类详情失败不影响主流程 */
+        }
       }
     } catch (e) {
       ElMessage.error(e.message || '加载商品失败')

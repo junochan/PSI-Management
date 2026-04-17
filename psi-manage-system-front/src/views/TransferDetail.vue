@@ -25,7 +25,7 @@
           <el-tag type="success" effect="light">{{ transfer?.to }}</el-tag>
         </el-descriptions-item>
         <el-descriptions-item label="创建时间">{{ formatTime(transfer?.createTime) }}</el-descriptions-item>
-        <el-descriptions-item label="操作人">{{ transfer?.operator }}</el-descriptions-item>
+        <el-descriptions-item label="操作人">{{ transfer?.operatorName || transfer?.operator || '-' }}</el-descriptions-item>
       </el-descriptions>
     </el-card>
 
@@ -59,7 +59,7 @@
           </div>
           <div class="meta-item">
             <el-icon><User /></el-icon>
-            <span>操作人：{{ transfer?.operator }}</span>
+            <span>操作人：{{ transfer?.operatorName || transfer?.operator || '-' }}</span>
           </div>
         </div>
       </div>

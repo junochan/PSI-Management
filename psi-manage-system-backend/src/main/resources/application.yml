@@ -4,6 +4,8 @@ server:
     context-path: /api
   tomcat:
     max-http-form-post-size: 15MB
+    # 允许查询串中出现 Tomcat 默认拒绝的部分 ASCII；中文仍须客户端百分号编码
+    relaxed-query-chars: '|,{,},[,]'
 
 spring:
   application:

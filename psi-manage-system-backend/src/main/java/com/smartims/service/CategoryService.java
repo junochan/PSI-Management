@@ -14,9 +14,13 @@ import java.util.List;
 public interface CategoryService {
 
     /**
-     * 获取所有分类列表
+     * 分类列表
+     *
+     * @param status 为 null 时不按状态过滤；为 1 仅启用，为 0 仅禁用（与实体 status 一致）
+     * @param name    非空时对分类名称模糊匹配（LIKE）
+     * @param code    非空时对分类编码模糊匹配（LIKE）；可与 name 同时传入，条件为 AND
      */
-    List<SysCategory> getAllCategories();
+    List<SysCategory> listCategories(Integer status, String name, String code);
 
     /**
      * 获取分类详情
