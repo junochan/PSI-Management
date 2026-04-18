@@ -2,6 +2,7 @@ package com.smartims.dto;
 
 import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Size;
 import lombok.Data;
 
 import java.io.Serializable;
@@ -34,10 +35,11 @@ public class PurchaseOrderDTO implements Serializable {
 
     private LocalDate expectDate;
 
-    private Long warehouseId;
-
     private String payMethod;
 
+    private String payStatus;
+
+    @Size(max = 500, message = "备注长度不能超过500个字符")
     private String remark;
 
 }

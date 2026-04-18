@@ -1,5 +1,5 @@
 <template>
-  <div class="supplier-detail">
+  <div class="supplier-detail" v-loading="pageLoading" element-loading-text="加载中...">
     <el-card>
       <template #header>
         <div class="card-header">
@@ -12,8 +12,9 @@
       <el-descriptions :column="2" border>
         <el-descriptions-item label="供应商名称"><span class="supplier-name">{{ supplier?.name }}</span></el-descriptions-item>
         <el-descriptions-item label="所属行业">{{ supplier?.industryNames || '—' }}</el-descriptions-item>
-        <el-descriptions-item label="联系电话">{{ supplier?.phone }}</el-descriptions-item>
-        <el-descriptions-item label="邮箱">{{ supplier?.email || '-' }}</el-descriptions-item>
+        <el-descriptions-item label="联系人">{{ supplier?.contact || '-' }}</el-descriptions-item>
+        <el-descriptions-item label="联系电话">{{ supplier?.phone || '-' }}</el-descriptions-item>
+        <el-descriptions-item label="邮箱" :span="2">{{ formatSupplierEmailDisplay(supplier?.email) }}</el-descriptions-item>
         <el-descriptions-item label="地址" :span="2">{{ supplier?.address }}</el-descriptions-item>
         <el-descriptions-item label="备注" :span="2">{{ supplier?.remark || '-' }}</el-descriptions-item>
       </el-descriptions>
@@ -79,12 +80,21 @@
           </template>
         </el-table-column>
       </el-table>
+      <div class="pagination-wrapper">
+        <el-pagination
+          v-model:current-page="ordersCurrentPage"
+          v-model:page-size="ordersPageSize"
+          :total="ordersTotal"
+          :page-sizes="[10, 20, 50]"
+          layout="total, sizes, prev, pager, next, jumper"
+        />
+      </div>
     </el-card>
   </div>
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, watch } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { useUserStore } from '@/stores/user'
@@ -92,6 +102,12 @@ import { supplierApi, purchaseApi } from '@/api'
 import { formatTime } from '@/utils/time'
 import { firstProductImageUrl } from '@/utils/productImages'
 import { formatAmountDisplay } from '@/utils/moneyFormat'
+
+/** 供应商邮箱只读展示：空或纯空白时统一为「未填写」 */
+const formatSupplierEmailDisplay = (email) => {
+  const t = email == null ? '' : String(email).trim()
+  return t || '未填写'
+}
 
 const router = useRouter()
 const route = useRoute()
@@ -101,21 +117,26 @@ const canManageSupplier = computed(() => userStore.hasPermission('purchase:suppl
 
 const supplierId = computed(() => route.params.id)
 const supplier = ref(null)
+const pageLoading = ref(true)
 const purchaseOrders = ref([])
+const ordersCurrentPage = ref(1)
+const ordersPageSize = ref(10)
+const ordersTotal = ref(0)
 
 // 获取当前供应商的最新名称（用于订单显示）
 const currentSupplierName = computed(() => supplier.value?.name || '')
 
 const supplierOrders = computed(() => {
-  return purchaseOrders.value.filter(o => o.supplierId === Number(supplierId.value))
+  return purchaseOrders.value
 })
 
-// 计算统计数据
+// 合作订单数、总采购额与列表一致：来自 GET /suppliers/{id} 聚合字段
 const supplierStats = computed(() => {
-  const orders = supplierOrders.value
-  const totalOrders = orders.length
-  const totalAmount = orders.reduce((sum, o) => sum + (o.amount || 0), 0)
-  return { orders: totalOrders, amount: totalAmount }
+  const s = supplier.value
+  return {
+    orders: Number(s?.purchaseOrderCount ?? 0),
+    amount: Number(s?.totalPurchaseAmount ?? 0)
+  }
 })
 
 // 状态格式化函数
@@ -152,26 +173,45 @@ const getProductIcon = (productName) => {
 }
 
 onMounted(async () => {
-  if (!userStore.hasPermission('purchase:supplier')) {
-    ElMessage.warning('无供应商管理权限')
-    router.replace('/purchase')
-    return
-  }
-  const id = Number(supplierId.value)
-  if (!id) {
-    ElMessage.warning('供应商 ID 无效')
-    router.replace('/purchase')
-    return
-  }
+  pageLoading.value = true
   try {
-    supplier.value = await supplierApi.get(id)
-  } catch (e) {
-    ElMessage.error(e.message || '加载供应商失败')
-    router.replace('/purchase')
-    return
+    if (!userStore.hasPermission('purchase:supplier')) {
+      ElMessage.warning('无供应商管理权限')
+      router.replace('/purchase')
+      return
+    }
+    const id = Number(supplierId.value)
+    if (!id) {
+      ElMessage.warning('供应商 ID 无效')
+      router.replace('/purchase')
+      return
+    }
+    try {
+      supplier.value = await supplierApi.get(id)
+    } catch (e) {
+      ElMessage.error(e.message || '加载供应商失败')
+      router.replace('/purchase')
+      return
+    }
+    await fetchSupplierOrders()
+  } finally {
+    pageLoading.value = false
   }
-  const res = await purchaseApi.list({ page: 1, size: 500 })
+})
+
+const fetchSupplierOrders = async () => {
+  const id = Number(supplierId.value)
+  const res = await purchaseApi.list({
+    page: ordersCurrentPage.value,
+    size: ordersPageSize.value,
+    supplierId: id
+  })
   purchaseOrders.value = res.list || []
+  ordersTotal.value = Number(res.total) || 0
+}
+
+watch([ordersCurrentPage, ordersPageSize], () => {
+  fetchSupplierOrders()
 })
 
 const goBack = () => router.back()
@@ -181,6 +221,11 @@ const viewOrder = (row) => { router.push(`/purchase/order/${row.id}`) }
 
 <style lang="scss" scoped>
 .supplier-detail {
+  .pagination-wrapper {
+    display: flex;
+    justify-content: flex-end;
+    padding-top: 16px;
+  }
   .card-header {
     display: flex;
     justify-content: flex-end;
@@ -188,7 +233,7 @@ const viewOrder = (row) => { router.push(`/purchase/order/${row.id}`) }
     .header-actions { display: flex; gap: 12px; }
   }
   .supplier-name { font-weight: 600; color: #303133; }
-  .order-no { color: #E94560; font-family: monospace; }
+  .order-no { color: #E94560; }
   .amount { font-weight: 600; color: #E94560; }
   .stats-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 20px; }
   .stat-item {

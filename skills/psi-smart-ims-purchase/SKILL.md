@@ -76,7 +76,7 @@ psims purchase stats
 |------|----------|------------|-----------|----------|
 | `GET /purchase/orders` | 无 | `page`,`size`,`sort`,`order`,`keyword`,`productId`,`warehouseId`,`customerId`,`supplierId`,`categoryName`,`productStatus`,`stagnantStatus`,`inboundStatus`,`payStatus`,`salesOrderStatus`,`aftersalesStatus`,`lastOutboundStart`,`lastOutboundEnd`,`lastInboundStart`,`lastInboundEnd`,`expectDateStart`,`expectDateEnd`,`createTimeStart`,`createTimeEnd`,`operatorName`（均可选） | 无 | 无 |
 | `GET /purchase/orders/{id}` | `id`(必填) | 无 | 无 | 无 |
-| `POST /purchase/orders` | 无 | 无 | `supplierId`(必填),`productId`(必填),`quantity`(必填),`unitPrice`(必填),`expectDate`(可选),`warehouseId`(可选),`payMethod`(可选),`remark`(可选) | 无 |
+| `POST /purchase/orders` | 无 | 无 | `supplierId`(必填),`productId`(必填),`quantity`(必填),`unitPrice`(必填),`expectDate`(可选),`payMethod`(可选),`remark`(可选) | 无 |
 | `PUT /purchase/orders/{id}` | `id`(必填) | 无 | 同 `POST /purchase/orders` 字段 | 无 |
 | `PUT /purchase/orders/{id}/cancel` | `id`(必填) | 无 | 无 | 无 |
 | `DELETE /purchase/orders/{id}` | `id`(必填) | 无 | 无 | 无 |

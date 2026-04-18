@@ -1,6 +1,6 @@
 <template>
   <div class="inventory-detail-page">
-    <el-card>
+    <el-card v-loading="pageLoading" element-loading-text="加载中...">
       <template #header>
         <div class="card-header">
           <el-button @click="goBack">返回</el-button>
@@ -9,7 +9,14 @@
 
       <!-- 商品图片展示 -->
       <div class="stock-product-image" v-if="getProductImage(stock?.productId)">
-        <img :src="getProductImage(stock?.productId)" class="product-image-preview" />
+        <ProductImageThumb
+          :src="getProductImage(stock?.productId)"
+          :preview-src-list="stockHeaderPreviewList"
+          class="product-image-preview"
+          :width="100"
+          :height="100"
+          :radius="8"
+        />
         <div class="product-image-info">
           <h4>{{ getProductName(stock?.productId, stock?.productName || stock?.name) }}</h4>
           <p>SKU: {{ stock?.sku }}</p>
@@ -96,6 +103,23 @@
         <el-table-column label="销售单号" min-width="120">
           <template #default="{ row }"><span class="order-no">{{ row.salesOrderNo || row.salesNo || '-' }}</span></template>
         </el-table-column>
+        <el-table-column label="商品" min-width="168" show-overflow-tooltip>
+          <template #default="{ row }">
+            <div class="outbound-product-mini">
+              <ProductImageThumb
+                v-if="outboundRowThumb(row)"
+                :src="outboundRowThumb(row)"
+                :preview-src-list="parseProductImageUrls(row?.productImage || row?.image)"
+                class="outbound-thumb-mini"
+                :width="32"
+                :height="32"
+                :radius="4"
+              />
+              <span v-else class="outbound-icon-mini">{{ getCategoryIcon(row.category || '') }}</span>
+              <span class="outbound-name-mini">{{ row.productName || '-' }}</span>
+            </div>
+          </template>
+        </el-table-column>
         <el-table-column label="数量" width="80" align="center">
           <template #default="{ row }">{{ row.quantity }}</template>
         </el-table-column>
@@ -131,7 +155,18 @@
           <el-input :value="`${stockInboundForm.currentStock} 件`" disabled />
         </el-form-item>
         <el-form-item label="采购单" prop="purchaseOrderId">
-          <el-select v-model="stockInboundForm.purchaseOrderId" placeholder="请选择采购单" style="width: 100%" @change="onStockPurchaseOrderChange" :disabled="stockPendingPurchaseOrders.length === 0">
+          <el-select
+            v-model="stockInboundForm.purchaseOrderId"
+            v-load-more="{ popperClass: 'inventory-detail-purchase-order-dropdown', onLoadMore: loadMorePurchaseOrderOptions, disabled: purchaseOrderOptionsLoading || !purchaseOrderOptionsHasMore }"
+            popper-class="inventory-detail-purchase-order-dropdown"
+            placeholder="请选择采购单"
+            style="width: 100%"
+            filterable
+            @change="onStockPurchaseOrderChange"
+            @visible-change="onPurchaseOrderSelectVisibleChange"
+            @filter-method="onPurchaseOrderFilter"
+            :disabled="stockPendingPurchaseOrders.length === 0"
+          >
             <el-option v-for="po in stockPendingPurchaseOrders" :key="po.id" :label="`#${po.orderNo} - ${po.supplierName || ''} - 待入库${po.pendingQuantity || (po.totalQuantity - (po.inboundQuantity || 0))}件`" :value="po.id" />
           </el-select>
         </el-form-item>
@@ -189,7 +224,18 @@
           <el-input :value="`${stockOutboundForm.currentStock} 件`" disabled />
         </el-form-item>
         <el-form-item label="销售单" prop="salesOrderId">
-          <el-select v-model="stockOutboundForm.salesOrderId" placeholder="请选择销售单" style="width: 100%" @change="onStockSalesOrderChange" :disabled="stockPendingSalesOrders.length === 0">
+          <el-select
+            v-model="stockOutboundForm.salesOrderId"
+            v-load-more="{ popperClass: 'inventory-detail-sales-order-dropdown', onLoadMore: loadMoreSalesOrderOptions, disabled: salesOrderOptionsLoading || !salesOrderOptionsHasMore }"
+            popper-class="inventory-detail-sales-order-dropdown"
+            placeholder="请选择销售单"
+            style="width: 100%"
+            filterable
+            @change="onStockSalesOrderChange"
+            @visible-change="onSalesOrderSelectVisibleChange"
+            @filter-method="onSalesOrderFilter"
+            :disabled="stockPendingSalesOrders.length === 0"
+          >
             <el-option v-for="so in stockPendingSalesOrders" :key="so.id" :label="`#${so.orderNo} - ${so.customerName || ''} - 待发货${so.pendingQuantity || so.quantity}件`" :value="so.id" />
           </el-select>
         </el-form-item>
@@ -258,7 +304,16 @@
         <el-row :gutter="20">
           <el-col :span="12">
             <el-form-item label="供应商" prop="supplierId">
-              <el-select v-model="purchaseForm.supplierId" placeholder="请选择供应商" style="width: 100%" filterable>
+              <el-select
+                v-model="purchaseForm.supplierId"
+                v-load-more="{ popperClass: 'inventory-detail-supplier-dropdown', onLoadMore: loadMoreSupplierOptions, disabled: supplierOptionsLoading || !supplierOptionsHasMore }"
+                popper-class="inventory-detail-supplier-dropdown"
+                placeholder="请选择供应商"
+                style="width: 100%"
+                filterable
+                @visible-change="onSupplierSelectVisibleChange"
+                @filter-method="onSupplierFilter"
+              >
                 <el-option v-for="s in suppliersList" :key="s.id" :label="s.name" :value="s.id" />
               </el-select>
             </el-form-item>
@@ -310,25 +365,28 @@ import { ref, computed, onMounted } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { useUserStore } from '@/stores/user'
-import { inventoryApi, purchaseApi, salesApi, productApi, warehouseApi, supplierApi, categoryApi, CATEGORY_STATUS } from '@/api'
+import { useDataStore } from '@/stores/data'
+import { inventoryApi, purchaseApi, salesApi, productApi, supplierApi, systemConfigApi } from '@/api'
 import { formatTime } from '@/utils/time'
-import { firstProductImageUrl } from '@/utils/productImages'
+import ProductImageThumb from '@/components/ProductImageThumb.vue'
+import { firstProductImageUrl, parseProductImageUrls } from '@/utils/productImages'
 import { formatAmountDisplay } from '@/utils/moneyFormat'
 import { canShortcutPurchaseForStock } from '@/utils/productStatus'
 
 const router = useRouter()
 const route = useRoute()
 const userStore = useUserStore()
+const dataStore = useDataStore()
 
-const hasInventoryMenu = computed(() => userStore.hasPermission('inventory'))
 /** 与列表页一致：流水数据仅在具备 inventory:records 时拉取 */
 const canInventoryRecordsTab = computed(() => userStore.hasPermission('inventory:records'))
-const canInventoryOutbound = computed(
-  () => hasInventoryMenu.value || userStore.hasPermission('inventory:outbound')
-)
 
 const stockId = computed(() => route.params.id)
 const loading = ref(false)
+const pageLoading = ref(true)
+const OPTION_PAGE_SIZE = 20
+/** 详情页出入库流水首屏请求条数，与库存主表「出入库记录」Tab 默认每页一致 */
+const STOCK_RECORDS_FETCH_SIZE = 10
 
 // 表单refs
 const stockInboundFormRef = ref()
@@ -341,6 +399,7 @@ const purchaseFormRef = ref()
 const stockSafeStockEdit = ref(10)
 const stockLocationEdit = ref('')
 const stockStagnantDaysEdit = ref(90)
+const systemStaleDays = ref(90)
 
 // 对话框状态
 const stockInboundVisible = ref(false)
@@ -352,11 +411,22 @@ const stockOutboundType = ref('sales')
 // 库存数据
 const stock = ref(null)
 const products = ref([])
-const warehousesList = ref([])
-const categoriesList = ref([])
+const warehousesList = computed(() => dataStore.warehouses || [])
 const suppliersList = ref([])
 const purchaseOrders = ref([])
+const purchaseOrderOptionsPage = ref(1)
+const purchaseOrderOptionsHasMore = ref(true)
+const purchaseOrderOptionsLoading = ref(false)
+const purchaseOrderKeyword = ref('')
 const salesOrders = ref([])
+const salesOrderOptionsPage = ref(1)
+const salesOrderOptionsHasMore = ref(true)
+const salesOrderOptionsLoading = ref(false)
+const salesOrderKeyword = ref('')
+const supplierOptionsPage = ref(1)
+const supplierOptionsHasMore = ref(true)
+const supplierOptionsLoading = ref(false)
+const supplierKeyword = ref('')
 const inboundRecords = ref([])
 const outboundRecords = ref([])
 
@@ -381,20 +451,13 @@ const stockOutboundRecords = computed(() => {
 // 待入库采购单
 const stockPendingPurchaseOrders = computed(() => {
   if (!stockInboundForm.value.productId) return []
-  return purchaseOrders.value.filter(po =>
-    po.productId === stockInboundForm.value.productId &&
-    po.inboundStatus !== 'completed' && po.inboundStatus !== 'cancelled'
-  )
+  return purchaseOrders.value.filter(po => Number(po.productId) === Number(stockInboundForm.value.productId) && isPendingPurchaseOrder(po))
 })
 
 // 待发货销售单
 const stockPendingSalesOrders = computed(() => {
   if (!stockOutboundForm.value.productId) return []
-  return salesOrders.value.filter(so =>
-    so.productId === stockOutboundForm.value.productId &&
-    so.status === 'pending' &&
-    so.payStatus === 'paid'
-  )
+  return salesOrders.value.filter(so => Number(so.productId) === Number(stockOutboundForm.value.productId) && isPendingSalesOrder(so))
 })
 
 // 入库表单
@@ -490,6 +553,18 @@ const getProductImage = (productId) => {
   return firstProductImageUrl(product?.image)
 }
 
+const stockHeaderPreviewList = computed(() => {
+  const s = stock.value
+  const p = (products.value || []).find((pp) => pp.id === s?.productId)
+  return parseProductImageUrls(p?.image || s?.productImage || s?.image)
+})
+
+/** 出库流水行：优先用接口回填的 productImage（/inventory/outbounds） */
+const outboundRowThumb = (row) => firstProductImageUrl(row?.productImage || row?.image)
+
+const getCategoryIcon = (cat) =>
+  ({ '手机': '📱', '电脑': '💻', '配件': '🎧', '手表': '⌚', '平板': '📱' }[cat] || '📦')
+
 // 获取商品名称（从商品列表动态获取最新名称）
 const getProductName = (productId, fallbackName) => {
   const product = (products.value || []).find(p => p.id === productId)
@@ -503,14 +578,8 @@ const getWarehouseName = (warehouseId) => {
 
 const getCategoryName = (productId) => {
   const product = (products.value || []).find(p => p.id === productId)
-  if (product) {
-    if (product.categoryId) {
-      const category = (categoriesList.value || []).find(c => c.id === product.categoryId)
-      return category?.name || product.categoryName || product.category || ''
-    }
-    return product.categoryName || product.category || ''
-  }
-  return ''
+  if (!product) return ''
+  return product.categoryName || product.category || ''
 }
 
 const getStockStatusType = (status) => ({ 'normal': 'success', 'warning': 'warning', 'critical': 'danger', '正常': 'success', '偏低': 'warning', '紧急补货': 'danger' }[status] || 'info')
@@ -520,107 +589,258 @@ const formatStockStatus = (status) => {
   return statusMap[status] || status
 }
 
-// 呆滞计算
+const parseInventoryMoment = (raw) => {
+  if (raw == null || raw === '') return null
+  if (raw instanceof Date && !Number.isNaN(raw.getTime())) return raw
+  const s = typeof raw === 'string' ? raw.trim().replace(' ', 'T') : String(raw)
+  const d = new Date(s)
+  return Number.isNaN(d.getTime()) ? null : d
+}
+
 const getStagnantDays = (stockData) => {
-  const now = new Date()
-  if (stockData?.lastOutboundTime) {
-    const lastOutbound = new Date(stockData.lastOutboundTime)
-    return Math.floor((now - lastOutbound) / (1000 * 60 * 60 * 24))
-  }
-  if (stockData?.lastInboundTime) {
-    const lastInbound = new Date(stockData.lastInboundTime)
-    return Math.floor((now - lastInbound) / (1000 * 60 * 60 * 24))
-  }
-  return 0
+  const ref =
+    parseInventoryMoment(stockData?.lastOutboundTime) ||
+    parseInventoryMoment(stockData?.lastInboundTime) ||
+    parseInventoryMoment(stockData?.createTime)
+  if (!ref) return 0
+  return Math.floor((Date.now() - ref.getTime()) / (1000 * 60 * 60 * 24))
+}
+
+const getStagnantWarningDays = (stockData) => {
+  const row = stockData?.stagnantDays
+  if (typeof row === 'number' && row >= 1) return row
+  const g = systemStaleDays.value
+  return typeof g === 'number' && g >= 1 ? g : 90
 }
 
 const getStagnantStatusType = (stockData) => {
   const stagnantDays = getStagnantDays(stockData)
-  const warningDays = stockData?.stagnantDays || 90
+  const warningDays = getStagnantWarningDays(stockData)
   if (stagnantDays >= warningDays) return 'danger'
   return 'success'
 }
 
 const getStagnantStatusText = (stockData) => {
   const stagnantDays = getStagnantDays(stockData)
-  const warningDays = stockData?.stagnantDays || 90
+  const warningDays = getStagnantWarningDays(stockData)
   if (stagnantDays >= warningDays) return `呆滞${stagnantDays}天`
   return `正常`
 }
 
+const mergeOptionsById = (existing, incoming) => {
+  const merged = [...existing]
+  const idSet = new Set(merged.map(item => item.id))
+  ;(incoming || []).forEach(item => {
+    if (!idSet.has(item.id)) {
+      merged.push(item)
+      idSet.add(item.id)
+    }
+  })
+  return merged
+}
+
+const isPendingPurchaseOrder = (item) => item && item.inboundStatus !== 'completed' && item.inboundStatus !== 'cancelled'
+const isPendingSalesOrder = (item) => item && item.payStatus === 'paid' && (item.salesOrderStatus || item.status) === 'pending'
+
+const loadMorePurchaseOrderOptions = async ({ reset = false } = {}) => {
+  if (purchaseOrderOptionsLoading.value || !stockInboundForm.value.productId) return
+  if (reset) {
+    purchaseOrderOptionsPage.value = 1
+    purchaseOrderOptionsHasMore.value = true
+    purchaseOrders.value = []
+  } else if (!purchaseOrderOptionsHasMore.value) {
+    return
+  }
+  purchaseOrderOptionsLoading.value = true
+  try {
+    const res = await purchaseApi.list({
+      page: purchaseOrderOptionsPage.value,
+      size: OPTION_PAGE_SIZE,
+      keyword: purchaseOrderKeyword.value || undefined
+    })
+    const list = (res?.list || []).filter(item => Number(item.productId) === Number(stockInboundForm.value.productId) && isPendingPurchaseOrder(item))
+    purchaseOrders.value = mergeOptionsById(purchaseOrders.value, list)
+    if ((res?.list || []).length < OPTION_PAGE_SIZE) {
+      purchaseOrderOptionsHasMore.value = false
+    } else {
+      purchaseOrderOptionsPage.value += 1
+    }
+  } finally {
+    purchaseOrderOptionsLoading.value = false
+  }
+}
+
+const loadMoreSalesOrderOptions = async ({ reset = false } = {}) => {
+  if (salesOrderOptionsLoading.value || !stockOutboundForm.value.productId) return
+  if (reset) {
+    salesOrderOptionsPage.value = 1
+    salesOrderOptionsHasMore.value = true
+    salesOrders.value = []
+  } else if (!salesOrderOptionsHasMore.value) {
+    return
+  }
+  salesOrderOptionsLoading.value = true
+  try {
+    const res = await salesApi.list({
+      page: salesOrderOptionsPage.value,
+      size: OPTION_PAGE_SIZE,
+      keyword: salesOrderKeyword.value || undefined,
+      payStatus: 'paid',
+      salesOrderStatus: 'pending'
+    })
+    const list = (res?.list || []).filter(item => Number(item.productId) === Number(stockOutboundForm.value.productId) && isPendingSalesOrder(item))
+    salesOrders.value = mergeOptionsById(salesOrders.value, list)
+    if ((res?.list || []).length < OPTION_PAGE_SIZE) {
+      salesOrderOptionsHasMore.value = false
+    } else {
+      salesOrderOptionsPage.value += 1
+    }
+  } finally {
+    salesOrderOptionsLoading.value = false
+  }
+}
+
+const loadMoreSupplierOptions = async ({ reset = false } = {}) => {
+  if (supplierOptionsLoading.value) return
+  if (reset) {
+    supplierOptionsPage.value = 1
+    supplierOptionsHasMore.value = true
+    suppliersList.value = []
+  } else if (!supplierOptionsHasMore.value) {
+    return
+  }
+  supplierOptionsLoading.value = true
+  try {
+    const res = await supplierApi.list({
+      page: supplierOptionsPage.value,
+      size: OPTION_PAGE_SIZE,
+      keyword: supplierKeyword.value || undefined
+    })
+    const list = res?.list || []
+    suppliersList.value = mergeOptionsById(suppliersList.value, list)
+    if (list.length < OPTION_PAGE_SIZE) {
+      supplierOptionsHasMore.value = false
+    } else {
+      supplierOptionsPage.value += 1
+    }
+  } finally {
+    supplierOptionsLoading.value = false
+  }
+}
+
+const onPurchaseOrderSelectVisibleChange = (visible) => {
+  if (visible && purchaseOrders.value.length === 0) {
+    loadMorePurchaseOrderOptions({ reset: true })
+  }
+}
+
+const onSalesOrderSelectVisibleChange = (visible) => {
+  if (visible && salesOrders.value.length === 0) {
+    loadMoreSalesOrderOptions({ reset: true })
+  }
+}
+
+const onSupplierSelectVisibleChange = (visible) => {
+  if (visible && suppliersList.value.length === 0) {
+    loadMoreSupplierOptions({ reset: true })
+  }
+}
+
+const onPurchaseOrderFilter = (keyword) => {
+  purchaseOrderKeyword.value = (keyword || '').trim()
+  loadMorePurchaseOrderOptions({ reset: true })
+}
+
+const onSalesOrderFilter = (keyword) => {
+  salesOrderKeyword.value = (keyword || '').trim()
+  loadMoreSalesOrderOptions({ reset: true })
+}
+
+const onSupplierFilter = (keyword) => {
+  supplierKeyword.value = (keyword || '').trim()
+  loadMoreSupplierOptions({ reset: true })
+}
+
 // 加载数据（与库存页一致：无出入库记录权限不拉流水接口）；当前库存行用单笔详情接口
 const loadData = async () => {
-  const loadProducts = async () => {
-    const res = await productApi.list({ page: 1, size: 500 })
-    products.value = res.list || []
-  }
-  const loadWarehouses = async () => {
-    const res = await warehouseApi.list({ page: 1, size: 200 })
-    warehousesList.value = res.list || []
-  }
-  const loadCategories = async () => {
-    const res = await categoryApi.list({ status: CATEGORY_STATUS.ENABLED })
-    categoriesList.value = Array.isArray(res) ? res : []
-  }
-  const loadSuppliers = async () => {
-    const res = await supplierApi.list({ page: 1, size: 200 })
-    suppliersList.value = res.list || []
-  }
-  const loadPurchaseOrders = async () => {
-    const res = await purchaseApi.list({ page: 1, size: 500 })
-    purchaseOrders.value = res.list || []
-  }
-  const loadSalesOrders = async () => {
-    const res = await salesApi.list({ page: 1, size: 500 })
-    salesOrders.value = res.list || []
-  }
-  const loadInboundRecords = async () => {
-    const res = await purchaseApi.inboundList({ page: 1, size: 500 })
-    inboundRecords.value = res.list || []
-  }
-  const loadOutboundRecords = async () => {
-    const res = await inventoryApi.outboundList({ page: 1, size: 500 })
-    outboundRecords.value = res.list || []
-  }
-
-  const tasks = [
-    loadProducts(),
-    loadWarehouses(),
-    loadCategories(),
-    loadSuppliers(),
-    loadPurchaseOrders()
-  ]
-  if (
-    canInventoryRecordsTab.value ||
-    canInventoryOutbound.value ||
-    userStore.hasPermission('sales') ||
-    userStore.hasPermission('sales:view')
-  ) {
-    tasks.push(loadSalesOrders())
-  }
-  if (canInventoryRecordsTab.value) {
-    tasks.push(loadInboundRecords(), loadOutboundRecords())
-  }
-  await Promise.all(tasks)
-
   const id = Number(stockId.value)
   if (!id) {
     ElMessage.warning('库存 ID 无效')
     router.replace('/inventory')
     return
   }
+  pageLoading.value = true
   try {
-    stock.value = await inventoryApi.get(id)
-  } catch (e) {
-    ElMessage.error(e.message || '加载库存失败')
-    router.replace('/inventory')
-    return
-  }
+    try {
+      stock.value = await inventoryApi.get(id)
+    } catch (e) {
+      ElMessage.error(e.message || '加载库存失败')
+      router.replace('/inventory')
+      return
+    }
 
-  if (stock.value) {
-    stockSafeStockEdit.value = stock.value.safeStock || 10
-    stockLocationEdit.value = stock.value.location || ''
-    stockStagnantDaysEdit.value = stock.value.stagnantDays || 90
+    const loadProducts = async () => {
+      if (!stock.value?.productId) {
+        products.value = []
+        return
+      }
+      try {
+        const product = await productApi.get(stock.value.productId)
+        products.value = product?.id ? [product] : []
+      } catch (error) {
+        products.value = []
+      }
+    }
+    const loadWarehousesForPage = async () => {
+      await dataStore.loadWarehouses({ forceOptions: true })
+    }
+    const loadSystemStaleDays = async () => {
+      try {
+        const cfg = await systemConfigApi.get()
+        if (cfg?.staleDays != null && cfg.staleDays >= 1) {
+          systemStaleDays.value = cfg.staleDays
+        }
+      } catch {
+        /* 保持默认 90 */
+      }
+    }
+    const loadInboundRecords = async () => {
+      const res = await purchaseApi.inboundList({
+        page: 1,
+        size: STOCK_RECORDS_FETCH_SIZE,
+        inventoryId: id
+      })
+      inboundRecords.value = res.list || []
+    }
+    const loadOutboundRecords = async () => {
+      const res = await inventoryApi.outboundList({
+        page: 1,
+        size: STOCK_RECORDS_FETCH_SIZE,
+        inventoryId: id
+      })
+      outboundRecords.value = res.list || []
+    }
+
+    const tasks = [
+      loadProducts(),
+      loadWarehousesForPage(),
+      loadSystemStaleDays()
+    ]
+    if (canInventoryRecordsTab.value) {
+      tasks.push(loadInboundRecords(), loadOutboundRecords())
+    }
+    await Promise.all(tasks)
+
+    if (stock.value) {
+      stockSafeStockEdit.value = stock.value.safeStock || 10
+      stockLocationEdit.value = stock.value.location || ''
+      stockStagnantDaysEdit.value =
+        stock.value.stagnantDays != null && stock.value.stagnantDays >= 1
+          ? stock.value.stagnantDays
+          : systemStaleDays.value
+    }
+  } finally {
+    pageLoading.value = false
   }
 }
 
@@ -671,8 +891,6 @@ const updateStagnantDays = async () => {
 
 // 打开入库对话框
 const openStockInbound = async () => {
-  const res = await purchaseApi.list({ page: 1, size: 500 })
-  purchaseOrders.value = res.list || []
   stockInboundType.value = 'purchase'
   stockInboundForm.value = {
     inventoryId: stock.value.id,
@@ -694,6 +912,7 @@ const openStockInbound = async () => {
     quantity: 1,
     remark: ''
   }
+  await loadMorePurchaseOrderOptions({ reset: true })
   stockInboundVisible.value = true
 }
 
@@ -704,8 +923,6 @@ const openStockOutbound = async () => {
     ElMessage.warning('当前库存为0，无法出库')
     return
   }
-  const res = await salesApi.list({ page: 1, size: 500 })
-  salesOrders.value = res.list || []
   stockOutboundType.value = 'sales'
   stockOutboundForm.value = {
     inventoryId: stock.value.id,
@@ -728,6 +945,7 @@ const openStockOutbound = async () => {
     maxQuantity: currentStock,
     remark: ''
   }
+  await loadMoreSalesOrderOptions({ reset: true })
   stockOutboundVisible.value = true
 }
 
@@ -853,8 +1071,7 @@ const openPurchaseFromStock = async () => {
     ElMessage.warning('该商品已停售，无法创建采购单')
     return
   }
-  const res = await supplierApi.list({ page: 1, size: 200 })
-  suppliersList.value = res.list || []
+  await loadMoreSupplierOptions({ reset: true })
   const product = products.value.find(p => p.id === stock.value.productId)
   purchaseForm.value = {
     productId: stock.value.productId,
@@ -935,10 +1152,9 @@ onMounted(() => {
     margin-bottom: 20px;
 
     .product-image-preview {
-      width: 100px;
-      height: 100px;
-      object-fit: cover;
+      flex-shrink: 0;
       border-radius: 8px;
+      overflow: hidden;
     }
 
     .product-image-info {
@@ -961,7 +1177,6 @@ onMounted(() => {
 
   .sku {
     color: #E94560;
-    font-family: monospace;
   }
 
   .warehouse-name {
@@ -981,7 +1196,6 @@ onMounted(() => {
 
   .order-no {
     color: #E94560;
-    font-family: monospace;
     &.success { color: #67C23A; }
     &.warning { color: #E6A23C; }
   }
@@ -996,6 +1210,26 @@ onMounted(() => {
     font-size: 12px;
     color: #E6A23C;
     margin-top: 4px;
+  }
+
+  .outbound-product-mini {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    .outbound-thumb-mini {
+      flex-shrink: 0;
+      border-radius: 4px;
+      overflow: hidden;
+    }
+    .outbound-icon-mini {
+      font-size: 18px;
+      flex-shrink: 0;
+      width: 32px;
+      text-align: center;
+    }
+    .outbound-name-mini {
+      font-size: 13px;
+    }
   }
 }
 </style>

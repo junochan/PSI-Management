@@ -1,5 +1,5 @@
 <template>
-  <div class="product-view-page">
+  <div class="product-view-page" v-loading="pageLoading" element-loading-text="加载中...">
     <el-card>
       <template #header>
         <div class="card-header">
@@ -64,6 +64,7 @@ const canProductEdit = computed(() => userStore.hasPermission('product:edit'))
 
 const productId = computed(() => route.params.id)
 const product = ref(null)
+const pageLoading = ref(true)
 
 const productImages = computed(() => parseProductImageUrls(product.value?.image))
 
@@ -86,15 +87,19 @@ const getProductIcon = (category) => {
 const loadProduct = async () => {
   const id = Number(productId.value)
   if (!id) {
+    pageLoading.value = false
     ElMessage.warning('商品 ID 无效')
     router.replace('/products')
     return
   }
+  pageLoading.value = true
   try {
     product.value = await productApi.get(id)
   } catch (e) {
     ElMessage.error(e.message || '加载商品失败')
     router.replace('/products')
+  } finally {
+    pageLoading.value = false
   }
 }
 
@@ -113,6 +118,7 @@ onMounted(() => {
 
 <style lang="scss" scoped>
 .product-view-page {
+  min-height: 360px;
   .card-header {
     display: flex;
     justify-content: flex-end;

@@ -3,21 +3,41 @@
     <el-tabs v-model="activeTab" class="page-tabs">
       <!-- 销售订单 -->
       <el-tab-pane label="销售订单" name="orders">
-        <el-card>
+        <el-card v-loading="salesOrdersTabLoading" element-loading-text="加载中...">
           <template #header>
             <div class="card-header">
-              <div class="header-actions">
-                <el-select v-model="filterCustomer" placeholder="按客户筛选" clearable filterable style="width: 160px">
-                  <el-option v-for="c in customers" :key="c.id" :label="c.name" :value="c.id" />
+              <div class="header-actions page-filter-bar">
+                <el-select
+                  v-model="filterCustomer"
+                  v-load-more="{ popperClass: 'sales-filter-customer-dropdown', onLoadMore: loadMoreCustomerOptions, disabled: customerOptionsLoading || !customerOptionsHasMore }"
+                  popper-class="sales-filter-customer-dropdown"
+                  class="page-filter-ctl page-filter-ctl--wide"
+                  placeholder="按客户筛选"
+                  clearable
+                  filterable
+                  @visible-change="onFilterCustomerSelectVisibleChange"
+                  @filter-method="onCustomerFilter"
+                >
+                  <el-option v-for="c in customerOptions" :key="c.id" :label="c.name" :value="c.id" />
                 </el-select>
-                <el-select v-model="filterProduct" placeholder="按商品筛选" clearable filterable style="width: 160px">
-                  <el-option v-for="p in products" :key="p.id" :label="p.name" :value="p.id" />
+                <el-select
+                  v-model="filterProduct"
+                  v-load-more="{ popperClass: 'sales-filter-product-dropdown', onLoadMore: loadMoreProductOptions, disabled: productOptionsLoading || !productOptionsHasMore }"
+                  popper-class="sales-filter-product-dropdown"
+                  class="page-filter-ctl page-filter-ctl--wide"
+                  placeholder="按商品筛选"
+                  clearable
+                  filterable
+                  @visible-change="onFilterProductSelectVisibleChange"
+                  @filter-method="onProductFilter"
+                >
+                  <el-option v-for="p in productOptions" :key="p.id" :label="p.name" :value="p.id" />
                 </el-select>
-                <el-select v-model="filterPayStatus" placeholder="按付款状态筛选" clearable filterable style="width: 120px">
+                <el-select v-model="filterPayStatus" class="page-filter-ctl page-filter-ctl--narrow" placeholder="按付款状态筛选" clearable filterable>
                   <el-option label="待付款" value="unpaid" />
                   <el-option label="已付款" value="paid" />
                 </el-select>
-                <el-select v-model="filterOrderStatus" placeholder="按订单状态筛选" clearable style="width: 120px">
+                <el-select v-model="filterOrderStatus" class="page-filter-ctl page-filter-ctl--narrow" placeholder="按订单状态筛选" clearable>
                   <el-option label="待处理" value="pending" />
                   <el-option label="已发货" value="shipped" />
                   <el-option label="已完成" value="completed" />
@@ -25,15 +45,15 @@
                 </el-select>
                 <el-date-picker
                   v-model="filterCreateTimeRange"
+                  class="page-filter-ctl page-filter-ctl--daterange"
                   type="daterange"
                   range-separator="至"
                   start-placeholder="下单开始"
                   end-placeholder="下单结束"
-                  style="width: 200px"
                   value-format="YYYY-MM-DD"
                 />
-                <el-input v-model="searchKeyword" placeholder="搜索订单号、客户名称..." prefix-icon="Search" clearable style="width: 180px" />
-                <el-button v-if="canAddSalesOrder" type="primary" @click="openSalesDialog"><el-icon><Plus /></el-icon>新建销售单</el-button>
+                <el-input v-model="searchKeyword" class="page-filter-ctl page-filter-ctl--search" placeholder="搜索订单号、客户名称..." prefix-icon="Search" clearable />
+                <el-button v-if="canAddSalesOrder" class="page-filter-primary" type="primary" @click="openSalesDialog"><el-icon><Plus /></el-icon>新建销售单</el-button>
               </div>
             </div>
           </template>
@@ -73,7 +93,15 @@
             <el-table-column label="商品" min-width="220" show-overflow-tooltip>
               <template #default="{ row }">
                 <div class="product-cell-mini">
-                  <img v-if="getProductImage(row.productId)" :src="getProductImage(row.productId)" class="product-thumb-mini" />
+                  <ProductImageThumb
+                    v-if="getRowProductImage(row)"
+                    :src="getRowProductImage(row)"
+                    :preview-src-list="getRowProductPreviewList(row)"
+                    class="product-thumb-mini"
+                    :width="32"
+                    :height="32"
+                    :radius="4"
+                  />
                   <span v-else class="product-icon-mini">{{ getProductIcon(getProductName(row.productId, row.productName)) }}</span>
                   <span class="product-name-mini">{{ getProductName(row.productId, row.productName || row.product) }}</span>
                 </div>
@@ -91,8 +119,8 @@
             <el-table-column label="付款" width="80" align="center">
               <template #default="{ row }"><el-tag :type="getPayStatusType(row.payStatus)" effect="light" size="small">{{ formatPayStatus(row.payStatus) }}</el-tag></template>
             </el-table-column>
-            <el-table-column label="时间" prop="createTime" width="176" show-overflow-tooltip />
-            <el-table-column label="操作" width="220" fixed="right" align="center">
+            <el-table-column label="下单时间" prop="createTime" width="176" show-overflow-tooltip />
+            <el-table-column label="操作" width="220" align="center">
               <template #default="{ row }">
                 <el-button type="primary" link size="small" @click="viewSalesOrder(row)">详情</el-button>
                 <el-button
@@ -133,12 +161,13 @@
 
       <!-- 客户管理 -->
       <el-tab-pane label="客户管理" name="customers">
+        <div class="customers-tab-wrap" v-loading="salesCustomersTabLoading" element-loading-text="加载中...">
         <div class="customer-search-bar">
           <el-input v-model="customerSearchKeyword" placeholder="搜索客户名称..." prefix-icon="Search" clearable style="width: 200px" />
           <el-button v-if="canManageCustomer" type="primary" @click="openCustomerDialog"><el-icon><Plus /></el-icon>添加客户</el-button>
         </div>
-        <el-empty v-if="!filteredCustomers.length" class="grid-empty" description="暂无数据" :image-size="80" />
-        <div v-else class="customers-grid">
+        <el-empty v-if="!salesCustomersTabLoading && !filteredCustomers.length" class="grid-empty" description="暂无数据" :image-size="80" />
+        <div v-if="filteredCustomers.length" class="customers-grid">
           <el-card class="customer-card" v-for="c in filteredCustomers" :key="c.id">
             <div class="customer-header">
               <div class="customer-avatar">{{ c.type === '企业' ? '🏢' : '👤' }}</div>
@@ -172,22 +201,29 @@
             </div>
           </el-card>
         </div>
+        </div>
       </el-tab-pane>
 
       <!-- 售后服务 -->
       <el-tab-pane label="售后服务" name="aftersales">
-        <el-card>
+        <el-card v-loading="salesAftersalesTabLoading" element-loading-text="加载中...">
           <template #header>
             <div class="card-header">
-              <div class="header-actions">
-                <el-input v-model="aftersalesSearchKeyword" placeholder="搜索工单号、订单号、客户..." prefix-icon="Search" clearable style="width: 200px" />
-                <el-select v-model="aftersalesFilterStatus" placeholder="按状态筛选" clearable filterable style="width: 120px">
+              <div class="header-actions page-filter-bar">
+                <el-input
+                  v-model="aftersalesSearchKeyword"
+                  class="page-filter-ctl page-filter-ctl--search-compact"
+                  placeholder="工单号/订单/客户"
+                  prefix-icon="Search"
+                  clearable
+                />
+                <el-select v-model="aftersalesFilterStatus" class="page-filter-ctl page-filter-ctl--narrow" placeholder="按状态筛选" clearable filterable>
                   <el-option label="待处理" value="待处理" />
                   <el-option label="处理中" value="处理中" />
                   <el-option label="已完成" value="已完成" />
                   <el-option label="已关闭" value="已关闭" />
                 </el-select>
-                <el-button v-if="canAftersalesCreate" type="primary" @click="openAftersalesDialog"><el-icon><Plus /></el-icon>创建售后工单</el-button>
+                <el-button v-if="canAftersalesCreate" class="page-filter-primary" type="primary" @click="openAftersalesDialog"><el-icon><Plus /></el-icon>创建售后工单</el-button>
               </div>
             </div>
           </template>
@@ -208,7 +244,7 @@
               <template #default="{ row }"><el-tag :type="getAftersalesStatusType(row.status)" effect="light" size="small">{{ formatAftersalesStatus(row.status) }}</el-tag></template>
             </el-table-column>
             <el-table-column label="创建时间" prop="createTime" width="176" show-overflow-tooltip />
-            <el-table-column label="操作" width="80" fixed="right" align="center">
+            <el-table-column label="操作" width="80" align="center">
               <template #default="{ row }">
                 <el-button type="primary" link size="small" @click="viewAftersalesDetail(row)">详情</el-button>
               </template>
@@ -233,8 +269,17 @@
         <el-row :gutter="20">
           <el-col :span="12">
             <el-form-item label="客户" prop="customerId">
-              <el-select v-model="salesForm.customerId" placeholder="请选择客户" style="width: 100%" filterable>
-                <el-option v-for="c in customers" :key="c.id" :label="c.name" :value="c.id" />
+              <el-select
+                v-model="salesForm.customerId"
+                v-load-more="{ popperClass: 'sales-dialog-customer-dropdown', onLoadMore: loadMoreCustomerOptions, disabled: customerOptionsLoading || !customerOptionsHasMore }"
+                popper-class="sales-dialog-customer-dropdown"
+                placeholder="请选择客户"
+                style="width: 100%"
+                filterable
+                @visible-change="onSalesDialogCustomerSelectVisibleChange"
+                @filter-method="onCustomerFilter"
+              >
+                <el-option v-for="c in customerOptions" :key="c.id" :label="c.name" :value="c.id" />
               </el-select>
             </el-form-item>
           </el-col>
@@ -247,15 +292,33 @@
         <el-row :gutter="20">
           <el-col :span="12">
             <el-form-item label="商品选择" prop="productId">
-              <el-select v-model="salesForm.productId" placeholder="请选择商品" style="width: 100%" filterable @change="onSalesProductChange">
-                <el-option v-for="p in productsForNewSalesOrder" :key="p.id" :label="p.name" :value="p.id" />
+              <el-select
+                v-model="salesForm.productId"
+                v-load-more="{ popperClass: 'sales-dialog-product-dropdown', onLoadMore: loadMoreProductOptions, disabled: productOptionsLoading || !productOptionsHasMore }"
+                popper-class="sales-dialog-product-dropdown"
+                placeholder="请选择商品"
+                style="width: 100%"
+                filterable
+                @change="onSalesProductChange"
+                @visible-change="onSalesDialogProductSelectVisibleChange"
+                @filter-method="onProductFilter"
+              >
+                <el-option v-for="p in selectableProductOptions" :key="p.id" :label="p.name" :value="p.id" />
               </el-select>
             </el-form-item>
           </el-col>
           <el-col :span="12">
             <el-form-item label="商品图片">
               <div class="selected-product-image">
-                <img v-if="selectedProductImage" :src="selectedProductImage" class="product-preview" />
+                <ProductImageThumb
+                  v-if="selectedProductImage"
+                  :src="selectedProductImage"
+                  :preview-src-list="salesSelectedProductPreviewList"
+                  class="product-preview"
+                  :width="80"
+                  :height="80"
+                  :radius="8"
+                />
                 <div v-else class="product-preview-placeholder">
                   <span class="placeholder-icon">📦</span>
                   <span class="placeholder-text">请先选择商品</span>
@@ -311,8 +374,15 @@
             </el-form-item>
           </el-col>
         </el-row>
-        <el-form-item label="备注">
-          <el-input v-model="salesForm.remark" placeholder="输入订单备注" />
+        <el-form-item label="备注" prop="remark">
+          <el-input
+            v-model="salesForm.remark"
+            type="textarea"
+            :rows="3"
+            :maxlength="SALES_ORDER_REMARK_MAX_LENGTH"
+            show-word-limit
+            placeholder="输入订单备注"
+          />
         </el-form-item>
       </el-form>
       <template #footer>
@@ -331,7 +401,7 @@
         <el-row :gutter="20">
           <el-col :span="12">
             <el-form-item label="客户名称" prop="name">
-              <el-input v-model="customerForm.name" placeholder="输入客户名称" />
+              <el-input v-model="customerForm.name" :maxlength="100" show-word-limit placeholder="输入客户名称" />
             </el-form-item>
           </el-col>
           <el-col :span="12">
@@ -344,30 +414,30 @@
           </el-col>
         </el-row>
         <el-form-item label="收货地址" prop="address">
-          <el-input v-model="customerForm.address" placeholder="输入详细收货地址" />
+          <el-input v-model="customerForm.address" :maxlength="200" show-word-limit placeholder="输入详细收货地址" />
         </el-form-item>
         <el-row :gutter="20">
           <el-col :span="12">
             <el-form-item label="联系人" prop="contact">
-              <el-input v-model="customerForm.contact" placeholder="输入联系人姓名" />
+              <el-input v-model="customerForm.contact" :maxlength="50" show-word-limit placeholder="输入联系人姓名" />
             </el-form-item>
           </el-col>
           <el-col :span="12">
             <el-form-item label="联系电话" prop="phone">
-              <el-input v-model="customerForm.phone" placeholder="输入联系电话" />
+              <el-input v-model="customerForm.phone" :maxlength="20" show-word-limit placeholder="输入联系电话" />
             </el-form-item>
           </el-col>
         </el-row>
-        <el-form-item label="邮箱">
-          <el-input v-model="customerForm.email" placeholder="输入邮箱地址" />
+        <el-form-item label="邮箱" prop="email">
+          <el-input v-model="customerForm.email" :maxlength="100" show-word-limit placeholder="输入邮箱地址" />
         </el-form-item>
-        <el-form-item label="备注">
-          <el-input v-model="customerForm.remark" placeholder="输入备注信息" />
+        <el-form-item label="备注" prop="remark">
+          <el-input v-model="customerForm.remark" type="textarea" :rows="3" :maxlength="500" show-word-limit placeholder="输入备注信息" />
         </el-form-item>
       </el-form>
       <template #footer>
         <el-button @click="customerDialogVisible = false">取消</el-button>
-        <el-button type="primary" @click="submitCustomer">确认添加</el-button>
+        <el-button type="primary" @click="submitCustomer">{{ customerForm.id ? '保存修改' : '确认添加' }}</el-button>
       </template>
     </el-dialog>
 
@@ -377,8 +447,17 @@
         <el-row :gutter="20">
           <el-col :span="12">
             <el-form-item label="关联订单" prop="salesOrderId">
-              <el-select v-model="aftersalesForm.salesOrderId" placeholder="请选择订单" style="width: 100%" filterable>
-                <el-option v-for="o in salesOrders" :key="o.id" :label="`${o.orderNo} - ${o.customerName || o.customer}`" :value="o.id" />
+              <el-select
+                v-model="aftersalesForm.salesOrderId"
+                v-load-more="{ popperClass: 'sales-aftersales-order-dropdown', onLoadMore: loadMoreSalesOrderOptions, disabled: salesOrderOptionsLoading || !salesOrderOptionsHasMore }"
+                popper-class="sales-aftersales-order-dropdown"
+                placeholder="请选择订单"
+                style="width: 100%"
+                filterable
+                @visible-change="onSalesOrderSelectVisibleChange"
+                @filter-method="onSalesOrderFilter"
+              >
+                <el-option v-for="o in salesOrderOptions" :key="o.id" :label="`${o.orderNo} - ${o.customerName || o.customer}`" :value="o.id" />
               </el-select>
             </el-form-item>
           </el-col>
@@ -420,15 +499,25 @@
     </el-dialog>
 
     <!-- 售后详情对话框 -->
-    <el-dialog v-model="aftersalesDetailVisible" title="售后工单详情" width="600px" destroy-on-close>
-      <el-descriptions :column="2" border>
+    <el-dialog v-model="aftersalesDetailVisible" title="售后工单详情" width="600px" destroy-on-close class="aftersales-detail-dialog">
+      <el-descriptions :column="2" border class="aftersales-detail-descriptions">
         <el-descriptions-item label="工单号"><span class="order-no warning">{{ currentAftersales?.orderNo }}</span></el-descriptions-item>
         <el-descriptions-item label="关联订单"><span class="order-no">{{ currentAftersales?.salesOrderNo }}</span></el-descriptions-item>
         <el-descriptions-item label="客户">{{ currentAftersales?.customerName }}</el-descriptions-item>
         <el-descriptions-item label="问题类型">
           <el-tag :type="getAftersalesTypeColor(currentAftersales?.type)" effect="light" size="small">{{ currentAftersales?.type }}</el-tag>
         </el-descriptions-item>
-        <el-descriptions-item label="问题描述" :span="2">{{ currentAftersales?.content }}</el-descriptions-item>
+        <el-descriptions-item label="问题描述" :span="2">
+          <el-tooltip
+            :content="currentAftersales?.content || '-'"
+            placement="top-start"
+            effect="dark"
+            :show-after="200"
+            popper-class="ep-table-overflow-tooltip aftersales-detail-tooltip"
+          >
+            <div class="aftersales-detail-text">{{ currentAftersales?.content || '-' }}</div>
+          </el-tooltip>
+        </el-descriptions-item>
         <el-descriptions-item label="期望处理">{{ currentAftersales?.expectHandle || '-' }}</el-descriptions-item>
         <el-descriptions-item label="状态">
           <el-tag :type="getAftersalesStatusType(currentAftersales?.status)" effect="light">{{ formatAftersalesStatus(currentAftersales?.status) }}</el-tag>
@@ -440,7 +529,17 @@
           <span class="amount">¥{{ formatAmountDisplay(currentAftersales?.refundAmount) }}</span>
         </el-descriptions-item>
         <el-descriptions-item label="处理时间">{{ currentAftersales?.handleTime || '-' }}</el-descriptions-item>
-        <el-descriptions-item label="备注">{{ currentAftersales?.remark || '-' }}</el-descriptions-item>
+        <el-descriptions-item label="备注">
+          <el-tooltip
+            :content="currentAftersales?.remark || '-'"
+            placement="top-start"
+            effect="dark"
+            :show-after="200"
+            popper-class="ep-table-overflow-tooltip aftersales-detail-tooltip"
+          >
+            <div class="aftersales-detail-text">{{ currentAftersales?.remark || '-' }}</div>
+          </el-tooltip>
+        </el-descriptions-item>
       </el-descriptions>
       <template #footer>
         <el-button @click="aftersalesDetailVisible = false">关闭</el-button>
@@ -502,6 +601,7 @@
 
     <!-- 发货对话框 -->
     <el-dialog v-model="shipDialogVisible" title="填写发货信息" width="700px" destroy-on-close>
+      <div v-loading="shipDialogLoading" element-loading-text="正在加载库存与客户信息...">
       <el-form ref="shipFormRef" :model="shipForm" :rules="shipRules" label-width="120px">
         <el-row :gutter="20">
           <el-col :span="12">
@@ -591,13 +691,21 @@
         <el-form-item label="收货地址" prop="receiverAddress">
           <el-input v-model="shipForm.receiverAddress" placeholder="输入详细收货地址" />
         </el-form-item>
-        <el-form-item label="发货备注">
-          <el-input v-model="shipForm.remark" type="textarea" :rows="3" placeholder="输入发货备注信息" />
+        <el-form-item label="发货备注" prop="remark">
+          <el-input
+            v-model="shipForm.remark"
+            type="textarea"
+            :rows="3"
+            :maxlength="500"
+            show-word-limit
+            placeholder="输入发货备注信息（最多500字）"
+          />
         </el-form-item>
       </el-form>
+      </div>
       <template #footer>
-        <el-button @click="shipDialogVisible = false">取消</el-button>
-        <el-button type="primary" @click="submitShip">确认发货</el-button>
+        <el-button @click="shipDialogVisible = false" :disabled="shipDialogLoading">取消</el-button>
+        <el-button type="primary" :disabled="shipDialogLoading" @click="submitShip">确认发货</el-button>
       </template>
     </el-dialog>
   </div>
@@ -609,11 +717,12 @@ import { useRouter, useRoute } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { useDataStore } from '@/stores/data'
 import { useUserStore } from '@/stores/user'
-import { salesApi, customerApi, aftersalesApi, inventoryApi } from '@/api'
+import { salesApi, customerApi, aftersalesApi, inventoryApi, productApi } from '@/api'
 import dayjs from 'dayjs'
 import relativeTime from 'dayjs/plugin/relativeTime'
 import 'dayjs/locale/zh-cn'
-import { firstProductImageUrl } from '@/utils/productImages'
+import ProductImageThumb from '@/components/ProductImageThumb.vue'
+import { firstProductImageUrl, parseProductImageUrls, productRowPreviewUrls } from '@/utils/productImages'
 import { formatAmountDisplay } from '@/utils/moneyFormat'
 import { isProductSelectableForOrder } from '@/utils/productStatus'
 
@@ -665,6 +774,8 @@ const aftersalesDetailVisible = ref(false)
 const handleAftersalesVisible = ref(false)
 const orderDetailVisible = ref(false)
 const shipDialogVisible = ref(false)
+/** 发货弹窗已打开但库存/客户回填尚未完成时为 true，避免点击后长时间无反馈 */
+const shipDialogLoading = ref(false)
 const salesFormRef = ref()
 const customerFormRef = ref()
 const aftersalesFormRef = ref()
@@ -673,6 +784,11 @@ const currentAftersales = ref(null)
 const shipFormRef = ref()
 const currentOrder = ref(null)
 const loading = ref(false)
+const salesOrdersTabLoading = computed(() => activeTab.value === 'orders' && loading.value)
+const salesCustomersTabLoading = computed(
+  () => activeTab.value === 'customers' && (loading.value || dataStore.customersLoading)
+)
+const salesAftersalesTabLoading = computed(() => activeTab.value === 'aftersales' && loading.value)
 
 // 统计数据
 const salesStats = ref({
@@ -688,11 +804,8 @@ const salesStats = ref({
   pendingAftersalesCount: 0
 })
 
-// 数据从后端获取（store 中订单为下拉等场景保留较全量）
-const salesOrders = computed(() => dataStore.salesOrders || [])
+// 数据从后端获取（订单下拉改为按需加载）
 const products = computed(() => dataStore.products || [])
-/** 新建销售单下拉：排除停售 */
-const productsForNewSalesOrder = computed(() => products.value.filter(isProductSelectableForOrder))
 const customers = computed(() => dataStore.customers || [])
 const filteredCustomers = computed(() => {
   let result = customers.value
@@ -705,6 +818,225 @@ const filteredCustomers = computed(() => {
 })
 const inventoryData = computed(() => dataStore.inventoryData || [])
 const warehouses = computed(() => dataStore.warehouses || [])
+
+/** 筛选/弹窗内远程下拉：首屏 10 条，滚动触底继续分页（与库存页一致） */
+const FILTER_DROPDOWN_PAGE_SIZE = 10
+const customerOptions = ref([])
+const customerOptionsPage = ref(0)
+const customerOptionsTotal = ref(0)
+const customerOptionsKeyword = ref('')
+const customerOptionsLoading = ref(false)
+const customerOptionsHasMore = computed(() => customerOptions.value.length < customerOptionsTotal.value)
+
+const productOptions = ref([])
+const productOptionsPage = ref(0)
+const productOptionsTotal = ref(0)
+const productOptionsKeyword = ref('')
+const productOptionsLoading = ref(false)
+const productOptionsHasMore = computed(() => productOptions.value.length < productOptionsTotal.value)
+
+const salesOrderOptions = ref([])
+const salesOrderOptionsPage = ref(0)
+const salesOrderOptionsTotal = ref(0)
+const salesOrderOptionsKeyword = ref('')
+const salesOrderOptionsLoading = ref(false)
+const salesOrderOptionsHasMore = computed(() => salesOrderOptions.value.length < salesOrderOptionsTotal.value)
+
+const mergeOptionsById = (base, extra) => {
+  const map = new Map()
+  ;(base || []).forEach((item) => {
+    if (item?.id != null) map.set(item.id, item)
+  })
+  ;(extra || []).forEach((item) => {
+    if (item?.id != null) map.set(item.id, item)
+  })
+  return Array.from(map.values())
+}
+
+const loadMoreCustomerOptions = async ({ reset = false, keyword = null } = {}) => {
+  if (customerOptionsLoading.value) return
+  if (reset) {
+    customerOptions.value = []
+    customerOptionsPage.value = 0
+    customerOptionsTotal.value = 0
+    customerOptionsKeyword.value = keyword ?? ''
+  } else if (!customerOptionsHasMore.value && customerOptionsPage.value > 0) {
+    return
+  }
+  customerOptionsLoading.value = true
+  try {
+    const nextPage = customerOptionsPage.value + 1
+    const res = await customerApi.list({
+      page: nextPage,
+      size: FILTER_DROPDOWN_PAGE_SIZE,
+      keyword: customerOptionsKeyword.value || undefined
+    })
+    const rows = res?.list || []
+    customerOptions.value = mergeOptionsById(customerOptions.value, rows)
+    customerOptionsPage.value = nextPage
+    customerOptionsTotal.value = Number(res?.total) || customerOptions.value.length
+    if (rows.length < FILTER_DROPDOWN_PAGE_SIZE) {
+      customerOptionsTotal.value = customerOptions.value.length
+    }
+  } finally {
+    customerOptionsLoading.value = false
+  }
+}
+
+const loadMoreProductOptions = async ({ reset = false, keyword = null } = {}) => {
+  if (productOptionsLoading.value) return
+  if (reset) {
+    productOptions.value = []
+    productOptionsPage.value = 0
+    productOptionsTotal.value = 0
+    productOptionsKeyword.value = keyword ?? ''
+  } else if (!productOptionsHasMore.value && productOptionsPage.value > 0) {
+    return
+  }
+  productOptionsLoading.value = true
+  try {
+    const nextPage = productOptionsPage.value + 1
+    const res = await productApi.list({
+      page: nextPage,
+      size: FILTER_DROPDOWN_PAGE_SIZE,
+      keyword: productOptionsKeyword.value || undefined
+    })
+    const rows = res?.list || []
+    productOptions.value = mergeOptionsById(productOptions.value, rows)
+    productOptionsPage.value = nextPage
+    productOptionsTotal.value = Number(res?.total) || productOptions.value.length
+    if (rows.length < FILTER_DROPDOWN_PAGE_SIZE) {
+      productOptionsTotal.value = productOptions.value.length
+    }
+  } finally {
+    productOptionsLoading.value = false
+  }
+}
+
+const loadMoreSalesOrderOptions = async ({ reset = false, keyword = null } = {}) => {
+  if (salesOrderOptionsLoading.value) return
+  if (reset) {
+    salesOrderOptions.value = []
+    salesOrderOptionsPage.value = 0
+    salesOrderOptionsTotal.value = 0
+    salesOrderOptionsKeyword.value = keyword ?? ''
+  } else if (!salesOrderOptionsHasMore.value && salesOrderOptionsPage.value > 0) {
+    return
+  }
+  salesOrderOptionsLoading.value = true
+  try {
+    const nextPage = salesOrderOptionsPage.value + 1
+    const res = await salesApi.list({
+      page: nextPage,
+      size: FILTER_DROPDOWN_PAGE_SIZE,
+      keyword: salesOrderOptionsKeyword.value || undefined
+    })
+    const rows = res?.list || []
+    salesOrderOptions.value = mergeOptionsById(salesOrderOptions.value, rows)
+    salesOrderOptionsPage.value = nextPage
+    salesOrderOptionsTotal.value = Number(res?.total) || salesOrderOptions.value.length
+    if (rows.length < FILTER_DROPDOWN_PAGE_SIZE) {
+      salesOrderOptionsTotal.value = salesOrderOptions.value.length
+    }
+  } finally {
+    salesOrderOptionsLoading.value = false
+  }
+}
+
+const mergeCustomerById = async (customerId) => {
+  if (customerId == null || customerId === '') return
+  const cid = Number(customerId)
+  if (customerOptions.value.some((c) => Number(c.id) === cid)) return
+  try {
+    const c = await customerApi.get(customerId)
+    if (c) customerOptions.value = mergeOptionsById(customerOptions.value, [c])
+  } catch {
+    /* ignore */
+  }
+}
+
+const mergeProductById = async (productId) => {
+  if (productId == null || productId === '') return
+  const pid = Number(productId)
+  if (productOptions.value.some((p) => Number(p.id) === pid)) return
+  try {
+    const p = await productApi.get(productId)
+    if (p) productOptions.value = mergeOptionsById(productOptions.value, [p])
+  } catch {
+    /* ignore */
+  }
+}
+
+const mergeSalesOrderById = async (orderId) => {
+  if (orderId == null || orderId === '') return
+  const oid = Number(orderId)
+  if (salesOrderOptions.value.some((o) => Number(o.id) === oid)) return
+  try {
+    const o = await salesApi.get(orderId)
+    if (o) salesOrderOptions.value = mergeOptionsById(salesOrderOptions.value, [o])
+  } catch {
+    /* ignore */
+  }
+}
+
+const onFilterCustomerSelectVisibleChange = async (visible) => {
+  if (!visible) return
+  if (customerOptions.value.length === 0) {
+    await loadMoreCustomerOptions({ reset: true, keyword: '' })
+  }
+  if (filterCustomer.value != null) await mergeCustomerById(filterCustomer.value)
+}
+
+const onFilterProductSelectVisibleChange = async (visible) => {
+  if (!visible) return
+  if (productOptions.value.length === 0) {
+    await loadMoreProductOptions({ reset: true, keyword: '' })
+  }
+  if (filterProduct.value != null) await mergeProductById(filterProduct.value)
+}
+
+const onSalesDialogCustomerSelectVisibleChange = async (visible) => {
+  if (!visible) return
+  if (customerOptions.value.length === 0) {
+    await loadMoreCustomerOptions({ reset: true, keyword: '' })
+  }
+  if (salesForm.value.customerId != null) await mergeCustomerById(salesForm.value.customerId)
+}
+
+const onSalesDialogProductSelectVisibleChange = async (visible) => {
+  if (!visible) return
+  if (productOptions.value.length === 0) {
+    await loadMoreProductOptions({ reset: true, keyword: '' })
+  }
+  if (salesForm.value.productId != null) await mergeProductById(salesForm.value.productId)
+}
+
+const onSalesOrderSelectVisibleChange = async (visible) => {
+  if (!visible) return
+  if (salesOrderOptions.value.length === 0) {
+    await loadMoreSalesOrderOptions({ reset: true, keyword: '' })
+  }
+  if (aftersalesForm.value.salesOrderId != null) {
+    await mergeSalesOrderById(aftersalesForm.value.salesOrderId)
+  }
+}
+
+const onCustomerFilter = (keyword) => {
+  loadMoreCustomerOptions({ reset: true, keyword: keyword || '' })
+}
+
+const onProductFilter = (keyword) => {
+  loadMoreProductOptions({ reset: true, keyword: keyword || '' })
+}
+
+const onSalesOrderFilter = (keyword) => {
+  loadMoreSalesOrderOptions({ reset: true, keyword: keyword || '' })
+}
+
+const selectableProductOptions = computed(() =>
+  productOptions.value.filter(isProductSelectableForOrder)
+)
+const productLookupList = computed(() => mergeOptionsById(products.value, productOptions.value))
 
 // 动态获取仓库名称 - 从仓库列表中根据warehouseId查找
 const getWarehouseName = (warehouseId) => {
@@ -824,12 +1156,9 @@ const loadData = async () => {
   loading.value = true
   try {
     await Promise.all([
-      dataStore.loadSalesOrders(),
       dataStore.loadCustomers(),
-      dataStore.loadProducts(),
       dataStore.loadAftersales(),
-      dataStore.loadInventory(),
-      dataStore.loadWarehouses()
+      dataStore.loadWarehouses({ forceOptions: true })
     ])
     await loadStats()
     await fetchSalesOrderTable(false)
@@ -838,6 +1167,19 @@ const loadData = async () => {
     loading.value = false
   }
 }
+
+const loadSalesDialogOptions = async () => {
+  await Promise.all([
+    loadMoreCustomerOptions({ reset: true, keyword: '' }),
+    loadMoreProductOptions({ reset: true, keyword: '' })
+  ])
+}
+
+const loadAftersalesDialogOptions = async () => {
+  await loadMoreSalesOrderOptions({ reset: true, keyword: '' })
+}
+
+const SALES_ORDER_REMARK_MAX_LENGTH = 500
 
 const salesForm = ref({ customerId: null, date: new Date(), productId: null, quantity: 1, payMethod: '银行转账', invoiceType: '不需要发票', remark: '' })
 /** 选中商品在各仓库存合计；null 表示未选商品或尚未拉取 */
@@ -872,7 +1214,8 @@ const salesRules = computed(() => ({
       },
       trigger: ['blur', 'change']
     }
-  ]
+  ],
+  remark: [{ max: SALES_ORDER_REMARK_MAX_LENGTH, message: `备注不能超过${SALES_ORDER_REMARK_MAX_LENGTH}个字符`, trigger: 'blur' }]
 }))
 
 const fetchSalesProductStock = async (productId) => {
@@ -903,9 +1246,21 @@ const onSalesProductChange = (productId) => {
 
 const customerForm = ref({ name: '', type: '个人', address: '', contact: '', phone: '', email: '', remark: '' })
 const customerRules = {
-  name: [{ required: true, message: '请输入客户名称', trigger: 'blur' }],
-  address: [{ required: true, message: '请输入地址', trigger: 'blur' }],
-  phone: [{ required: true, message: '请输入联系电话', trigger: 'blur' }]
+  name: [
+    { required: true, message: '请输入客户名称', trigger: 'blur' },
+    { max: 100, message: '客户名称不能超过100个字符', trigger: 'blur' }
+  ],
+  address: [
+    { required: true, message: '请输入地址', trigger: 'blur' },
+    { max: 200, message: '收货地址不能超过200个字符', trigger: 'blur' }
+  ],
+  phone: [
+    { required: true, message: '请输入联系电话', trigger: 'blur' },
+    { max: 20, message: '联系电话不能超过20个字符', trigger: 'blur' }
+  ],
+  contact: [{ max: 50, message: '联系人不能超过50个字符', trigger: 'blur' }],
+  email: [{ max: 100, message: '邮箱不能超过100个字符', trigger: 'blur' }],
+  remark: [{ max: 500, message: '备注不能超过500个字符', trigger: 'blur' }]
 }
 
 const aftersalesForm = ref({ salesOrderId: null, type: '质量问题', content: '', expect: '退货退款' })
@@ -951,7 +1306,8 @@ const shipRules = {
   trackingNo: [{ required: true, message: '请输入物流单号', trigger: 'blur' }],
   receiverName: [{ required: true, message: '请输入收货人姓名', trigger: 'blur' }],
   receiverPhone: [{ required: true, message: '请输入收货人电话', trigger: 'blur' }],
-  receiverAddress: [{ required: true, message: '请输入收货地址', trigger: 'blur' }]
+  receiverAddress: [{ required: true, message: '请输入收货地址', trigger: 'blur' }],
+  remark: [{ max: 500, message: '发货备注不能超过500个字符', trigger: 'blur' }]
 }
 
 const getCustomerPhone = (id) => customers.value.find(c => Number(c.id) === Number(id))?.phone || ''
@@ -973,7 +1329,7 @@ const resolveCustomerForShipment = async (customerId) => {
   }
 }
 const getSalePrice = () => {
-  const p = products.value.find(p => p.id === salesForm.value.productId)
+  const p = productLookupList.value.find(p => p.id === salesForm.value.productId)
   return p ? `¥${formatAmountDisplay(p.salePrice)}` : ''
 }
 
@@ -1005,21 +1361,37 @@ const formatPayStatus = (status) => {
 }
 
 // 获取商品图片
-const getProductImage = (productId) => {
-  const product = products.value.find(p => p.id === productId)
+const getProductImageById = (productId) => {
+  const product = productLookupList.value.find(p => p.id === productId)
   return firstProductImageUrl(product?.image)
+}
+
+const getRowProductImage = (row) => {
+  const imageFromRow = firstProductImageUrl(row?.productImage || row?.image)
+  if (imageFromRow) return imageFromRow
+  return getProductImageById(row?.productId)
+}
+
+const getRowProductPreviewList = (row) => {
+  const product = productLookupList.value.find((p) => p.id === row?.productId)
+  return productRowPreviewUrls(row, product?.image)
 }
 
 // 获取商品名称（从商品列表动态获取最新名称）
 const getProductName = (productId, fallbackName) => {
-  const product = products.value.find(p => p.id === productId)
+  const product = productLookupList.value.find(p => p.id === productId)
   return product?.name || fallbackName || '-'
 }
 
 // 选中商品的图片
 const selectedProductImage = computed(() => {
   if (!salesForm.value.productId) return null
-  return getProductImage(salesForm.value.productId)
+  return getProductImageById(salesForm.value.productId)
+})
+
+const salesSelectedProductPreviewList = computed(() => {
+  const p = productLookupList.value.find((x) => x.id === salesForm.value.productId)
+  return parseProductImageUrls(p?.image)
 })
 
 // 获取商品图标（无图片时使用）
@@ -1080,15 +1452,15 @@ const getAftersalesTypeColor = (type) => {
   return colorMap[type] || 'info'
 }
 
-const openSalesDialog = async () => {
+const openSalesDialog = () => {
   if (!canAddSalesOrder.value) {
     ElMessage.warning('无新建销售单权限')
     return
   }
-  await loadData()
   salesForm.value = { customerId: null, date: new Date(), productId: null, quantity: 1, payMethod: '银行转账', invoiceType: '不需要发票', remark: '' }
   salesProductStockRemain.value = null
   salesDialogVisible.value = true
+  void loadSalesDialogOptions()
 }
 const openCustomerDialog = () => {
   if (!canManageCustomer.value) {
@@ -1105,6 +1477,7 @@ const openAftersalesDialog = () => {
   }
   aftersalesForm.value = { salesOrderId: null, type: '质量问题', content: '', expect: '退货退款' }
   aftersalesDialogVisible.value = true
+  void loadAftersalesDialogOptions()
 }
 
 // 提交销售订单 - 调用后端API
@@ -1130,7 +1503,7 @@ const submitSales = async () => {
     if (valid) {
       loading.value = true
       try {
-        const p = products.value.find(p => p.id === salesForm.value.productId)
+        const p = productLookupList.value.find(p => p.id === salesForm.value.productId)
         await salesApi.create({
           customerId: salesForm.value.customerId,
           productId: salesForm.value.productId,
@@ -1142,8 +1515,6 @@ const submitSales = async () => {
         ElMessage.success('销售单创建成功')
         salesDialogVisible.value = false
         await Promise.all([
-          dataStore.loadSalesOrders(),
-          dataStore.loadCustomers(),
           fetchSalesOrderTable(false),
           loadStats()
         ])
@@ -1287,36 +1658,6 @@ const handleShip = async (row) => {
     ElMessage.warning('无发货权限')
     return
   }
-  await Promise.all([dataStore.loadInventory(), dataStore.loadWarehouses()])
-  const customer = await resolveCustomerForShipment(row.customerId)
-  const receiverName =
-    (customer?.contact && String(customer.contact).trim()) ||
-    customer?.name ||
-    row.receiverName ||
-    ''
-  const receiverPhone = customer?.phone || row.receiverPhone || ''
-  const receiverAddress = customer?.address || row.receiverAddress || ''
-
-  // 获取商品库存信息
-  const stockInfo = inventoryData.value
-    .filter(i => i.productId === row.productId || i.productName === row.product)
-    .map(i => ({
-      warehouseId: i.warehouseId,
-      warehouseName: getWarehouseName(i.warehouseId) || i.warehouseName || i.warehouse,
-      stock: i.stock || 0,
-      safeStock: i.safeStock || 10
-    }))
-
-  // 如果没有找到库存，添加仓库列表的默认展示
-  if (stockInfo.length === 0) {
-    stockInfo.push(...warehouses.value.map(w => ({
-      warehouseId: w.id,
-      warehouseName: w.name,
-      stock: 0,
-      safeStock: 10
-    })))
-  }
-
   const orderQty = row.quantity || 0
   const shippedQty = row.shippedQuantity || 0
   const pendingShip =
@@ -1335,17 +1676,74 @@ const handleShip = async (row) => {
     shipQuantity: pendingShip,
     logisticsCompany: '',
     trackingNo: '',
-    warehouse: stockInfo[0]?.warehouseName || getWarehouseName(stockInfo[0]?.warehouseId) || '',
-    warehouseId: stockInfo[0]?.warehouseId || 1,
+    warehouse: '',
+    warehouseId: row.warehouseId != null ? row.warehouseId : 1,
     estimatedDate: new Date(Date.now() + 3 * 24 * 60 * 60 * 1000),
-    receiverName,
-    receiverPhone,
+    receiverName: row.receiverName || '',
+    receiverPhone: row.receiverPhone || '',
     receiverPhone2: '',
-    receiverAddress,
+    receiverAddress: row.receiverAddress || '',
     remark: '',
-    stockInfo: stockInfo
+    stockInfo: []
   }
   shipDialogVisible.value = true
+  shipDialogLoading.value = true
+  try {
+    await Promise.all([dataStore.loadInventory(), dataStore.loadWarehouses({ forceOptions: true })])
+    const customer = await resolveCustomerForShipment(row.customerId)
+    const receiverName =
+      (customer?.contact && String(customer.contact).trim()) ||
+      customer?.name ||
+      row.receiverName ||
+      ''
+    const receiverPhone = customer?.phone || row.receiverPhone || ''
+    const receiverAddress = customer?.address || row.receiverAddress || ''
+
+    const stockInfo = inventoryData.value
+      .filter(i => i.productId === row.productId || i.productName === row.product)
+      .map(i => ({
+        warehouseId: i.warehouseId,
+        warehouseName: getWarehouseName(i.warehouseId) || i.warehouseName || i.warehouse,
+        stock: i.stock || 0,
+        safeStock: i.safeStock || 10
+      }))
+
+    if (stockInfo.length === 0) {
+      stockInfo.push(...warehouses.value.map(w => ({
+        warehouseId: w.id,
+        warehouseName: w.name,
+        stock: 0,
+        safeStock: 10
+      })))
+    }
+
+    shipForm.value = {
+      orderNo: row.orderNo,
+      orderId: row.id,
+      customer: row.customerName || row.customer,
+      customerId: row.customerId,
+      productId: row.productId,
+      productName: row.productName || row.product,
+      orderQuantity: row.quantity,
+      shipQuantity: pendingShip,
+      logisticsCompany: '',
+      trackingNo: '',
+      warehouse: stockInfo[0]?.warehouseName || getWarehouseName(stockInfo[0]?.warehouseId) || '',
+      warehouseId: stockInfo[0]?.warehouseId || 1,
+      estimatedDate: new Date(Date.now() + 3 * 24 * 60 * 60 * 1000),
+      receiverName,
+      receiverPhone,
+      receiverPhone2: '',
+      receiverAddress,
+      remark: '',
+      stockInfo
+    }
+  } catch (e) {
+    ElMessage.error(e?.message || '加载发货数据失败')
+    shipDialogVisible.value = false
+  } finally {
+    shipDialogLoading.value = false
+  }
 }
 
 // 仓库选择变化
@@ -1362,6 +1760,10 @@ const submitShip = async () => {
     ElMessage.warning('无发货权限')
     return
   }
+  if (shipDialogLoading.value) {
+    ElMessage.warning('正在加载发货数据，请稍候')
+    return
+  }
   if (!shipFormRef.value) return
   await shipFormRef.value.validate(async (valid) => {
     if (valid) {
@@ -1372,6 +1774,7 @@ const submitShip = async () => {
           quantity: shipForm.value.shipQuantity,
           logisticsCompany: shipForm.value.logisticsCompany,
           logisticsNo: shipForm.value.trackingNo,
+          estimatedDate: shipForm.value.estimatedDate ? dayjs(shipForm.value.estimatedDate).format('YYYY-MM-DD') : undefined,
           receiverName: shipForm.value.receiverName || undefined,
           receiverPhone: [shipForm.value.receiverPhone, shipForm.value.receiverPhone2].filter(Boolean).join(' / ') || undefined,
           receiverAddress: shipForm.value.receiverAddress || undefined,
@@ -1380,7 +1783,6 @@ const submitShip = async () => {
         ElMessage.success(`订单 ${shipForm.value.orderNo} 已发货，物流单号: ${shipForm.value.trackingNo}`)
         shipDialogVisible.value = false
         await Promise.all([
-          dataStore.loadSalesOrders(),
           fetchSalesOrderTable(false),
           dataStore.loadInventory(),
           loadStats()
@@ -1404,7 +1806,6 @@ const handlePayment = async (row) => {
     await salesApi.payment(row.id)
     ElMessage.success(`订单 ${row.orderNo} 已确认付款`)
     await Promise.all([
-      dataStore.loadSalesOrders(),
       fetchSalesOrderTable(false),
       loadStats()
     ])
@@ -1423,7 +1824,6 @@ const handleReceived = async (row) => {
     await salesApi.received(row.id)
     ElMessage.success(`订单 ${row.orderNo} 已确认收货`)
     await Promise.all([
-      dataStore.loadSalesOrders(),
       fetchSalesOrderTable(false),
       loadStats()
     ])
@@ -1433,7 +1833,17 @@ const handleReceived = async (row) => {
 }
 
 const printSalesOrder = (row) => { ElMessage.success(`打印销售单 - ${row.orderNo}`) }
-const createSalesFromCustomer = (c) => { salesForm.value.customerId = c.id; salesDialogVisible.value = true }
+const createSalesFromCustomer = (c) => {
+  if (!canAddSalesOrder.value) {
+    ElMessage.warning('无新建销售单权限')
+    return
+  }
+  salesForm.value = { customerId: c.id, date: new Date(), productId: null, quantity: 1, payMethod: '银行转账', invoiceType: '不需要发票', remark: '' }
+  salesProductStockRemain.value = null
+  salesDialogVisible.value = true
+  void loadSalesDialogOptions()
+  void mergeCustomerById(c.id)
+}
 const viewCustomerDetail = (c) => { router.push(`/sales/customer/${c.id}`) }
 
 // 售后详情
@@ -1505,7 +1915,7 @@ onMounted(async () => {
   try {
     row = await salesApi.get(Number(shipOid))
   } catch {
-    row = (dataStore.salesOrders || []).find((o) => String(o.id) === String(shipOid)) || null
+    row = (salesOrderTableRows.value || []).find((o) => String(o.id) === String(shipOid)) || null
   }
   await router.replace({ path: route.path, query: {} })
   if (row && canShipOrder.value && row.status === 'pending' && row.payStatus === 'paid') {
@@ -1541,13 +1951,135 @@ onMounted(async () => {
   }
   .stats-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 20px; margin-bottom: 24px; }
   .page-tabs { :deep(.el-tabs__header) { margin-bottom: 16px; } }
-  .card-header { display: flex; justify-content: flex-end; align-items: center; .header-actions { display: flex; align-items: center; gap: 16px; } }
-  .order-no { color: #E94560; font-family: monospace; &.warning { color: #E6A23C; } }
+  .card-header {
+    display: flex;
+    justify-content: flex-end;
+    align-items: flex-start;
+    width: 100%;
+    min-width: 0;
+
+    .header-actions {
+      display: flex;
+      align-items: center;
+      gap: 10px 12px;
+    }
+  }
+
+  /* 列表卡片筛选栏：允许换行与弹性宽度，适配 13–15 寸屏 */
+  .page-filter-bar {
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    width: 100%;
+    max-width: 100%;
+    box-sizing: border-box;
+
+    @media (max-width: 1400px) {
+      justify-content: flex-start;
+    }
+
+    .page-filter-primary {
+      flex: 0 0 auto;
+    }
+
+    .page-filter-ctl--wide {
+      width: 160px;
+      flex: 1 1 150px;
+      min-width: 120px;
+      max-width: 200px;
+    }
+
+    .page-filter-ctl--narrow {
+      width: 132px;
+      flex: 1 1 120px;
+      min-width: 112px;
+      max-width: 168px;
+    }
+
+    .page-filter-ctl--daterange {
+      width: 248px;
+      flex: 2 1 220px;
+      min-width: 200px;
+      max-width: 380px;
+    }
+
+    .page-filter-ctl--search {
+      width: 200px;
+      flex: 3 1 200px;
+      min-width: 180px;
+      max-width: 100%;
+    }
+
+    /** 售后服务 Tab：控件少，避免搜索框被 flex 拉满整行 */
+    .page-filter-ctl--search-compact {
+      width: 200px;
+      flex: 0 1 200px;
+      min-width: 160px;
+      max-width: 240px;
+    }
+
+    @media (max-width: 1400px) {
+      .page-filter-ctl--wide,
+      .page-filter-ctl--narrow,
+      .page-filter-ctl--daterange,
+      .page-filter-ctl--search {
+        width: auto;
+        max-width: none;
+      }
+
+      .page-filter-ctl--search-compact {
+        flex: 1 1 200px;
+        max-width: min(100%, 280px);
+        min-width: 0;
+      }
+
+      .page-filter-ctl--wide {
+        flex: 1 1 calc(50% - 6px);
+        min-width: 136px;
+      }
+
+      .page-filter-ctl--narrow {
+        flex: 1 1 calc(50% - 6px);
+        min-width: 120px;
+      }
+
+      .page-filter-ctl--daterange {
+        flex: 1 1 100%;
+        min-width: 0;
+      }
+
+      .page-filter-ctl--search {
+        flex: 1 1 min(100%, 420px);
+        min-width: 0;
+      }
+    }
+
+    @media (max-width: 720px) {
+      .page-filter-ctl--wide,
+      .page-filter-ctl--narrow,
+      .page-filter-ctl--search {
+        flex: 1 1 100%;
+        min-width: 0;
+      }
+
+      .page-filter-ctl--search-compact {
+        flex: 1 1 100%;
+        max-width: none;
+      }
+    }
+
+    .page-filter-ctl--daterange :deep(.el-range-editor.el-input__wrapper) {
+      width: 100%;
+      max-width: 100%;
+      box-sizing: border-box;
+    }
+  }
+  .order-no { color: #E94560; &.warning { color: #E6A23C; } }
   .amount { font-weight: 600; color: #E94560; }
   .customer-cell { display: flex; align-items: center; gap: 12px;
     .customer-icon { width: 40px; height: 40px; border-radius: 8px; background: #F5F7FA; display: flex; align-items: center; justify-content: center; font-size: 20px; }
     .customer-info { h4 { font-size: 14px; font-weight: 600; color: #303133; } p { font-size: 12px; color: #909399; } }
   }
+  .customers-tab-wrap { min-height: 280px; }
   .customer-search-bar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; }
   .grid-empty { padding: 32px 0; }
   .customers-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 20px; margin-bottom: 20px; }
@@ -1604,10 +2136,9 @@ onMounted(async () => {
     gap: 8px;
 
     .product-thumb-mini {
-      width: 32px;
-      height: 32px;
-      object-fit: cover;
+      flex-shrink: 0;
       border-radius: 4px;
+      overflow: hidden;
     }
 
     .product-icon-mini {
@@ -1639,10 +2170,8 @@ onMounted(async () => {
     justify-content: center;
 
     .product-preview {
-      width: 80px;
-      height: 80px;
-      object-fit: cover;
       border-radius: 8px;
+      overflow: hidden;
     }
 
     .product-preview-placeholder {
@@ -1666,5 +2195,58 @@ onMounted(async () => {
       }
     }
   }
+}
+
+:deep(.aftersales-detail-dialog .el-dialog__body) {
+  max-height: 65vh;
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+
+:deep(.aftersales-detail-dialog .el-descriptions__label) {
+  width: 88px;
+  white-space: nowrap;
+  vertical-align: top;
+}
+
+:deep(.aftersales-detail-dialog .el-descriptions__content) {
+  vertical-align: top;
+  min-width: 0;
+}
+
+:deep(.aftersales-detail-dialog .el-descriptions__table) {
+  width: 100%;
+  table-layout: fixed;
+}
+
+:deep(.aftersales-detail-dialog .aftersales-detail-text) {
+  display: block;
+  width: 100%;
+  max-width: 100%;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  line-height: 1.5;
+  overflow: hidden;
+  overflow-x: hidden;
+  padding-right: 4px;
+}
+
+</style>
+
+<style lang="scss">
+.el-popper.aftersales-detail-tooltip[role='tooltip'],
+.el-tooltip__popper.aftersales-detail-tooltip {
+  max-width: min(320px, calc(100vw - 48px)) !important;
+  width: auto !important;
+  box-sizing: border-box !important;
+}
+
+.el-popper.aftersales-detail-tooltip[role='tooltip'] .el-popper__content,
+.el-tooltip__popper.aftersales-detail-tooltip .el-popper__content {
+  max-width: 100% !important;
+  white-space: normal !important;
+  word-break: break-word !important;
+  overflow-wrap: anywhere !important;
+  line-height: 1.5;
 }
 </style>

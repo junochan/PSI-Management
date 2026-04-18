@@ -4,6 +4,7 @@ import { productApi, supplierApi, supplierIndustryApi, customerApi, warehouseApi
 import { useUserStore } from '@/stores/user'
 
 export const useDataStore = defineStore('data', () => {
+  const DEFAULT_LIST_PAGE_SIZE = 10
   // 商品数据 - 从后端获取
   const products = ref([])
   const productsLoading = ref(false)
@@ -34,10 +35,12 @@ export const useDataStore = defineStore('data', () => {
 
   // 入库记录 - 从后端获取
   const inboundRecords = ref([])
+  const inboundRecordsTotal = ref(0)
   const inboundLoading = ref(false)
 
   // 出库记录 - 从后端获取
   const outboundRecords = ref([])
+  const outboundRecordsTotal = ref(0)
   const outboundLoading = ref(false)
 
   // 售后工单 - 从后端获取
@@ -59,6 +62,9 @@ export const useDataStore = defineStore('data', () => {
   // 仓库数据 - 从后端获取
   const warehouses = ref([])
   const warehousesLoading = ref(false)
+  /** 合并并发 loadWarehouses，避免多页同时触发重复 GET /warehouses/options */
+  let warehousesOptionsInFlight = null
+  let warehousesFullInFlight = null
 
   // 用户数据 - 从后端获取
   const users = ref([])
@@ -74,7 +80,7 @@ export const useDataStore = defineStore('data', () => {
   const loadProducts = async (params = {}) => {
     productsLoading.value = true
     try {
-      const res = await productApi.list({ page: 1, size: 500, ...params })
+      const res = await productApi.list({ page: 1, size: DEFAULT_LIST_PAGE_SIZE, ...params })
       products.value = res.list || []
     } catch (error) {
       console.error('加载商品失败:', error)
@@ -85,10 +91,10 @@ export const useDataStore = defineStore('data', () => {
   }
 
   // 加载供应商列表
-  const loadSuppliers = async () => {
+  const loadSuppliers = async (params = {}) => {
     suppliersLoading.value = true
     try {
-      const res = await supplierApi.list({ page: 1, size: 100 })
+      const res = await supplierApi.list({ page: 1, size: DEFAULT_LIST_PAGE_SIZE, ...params })
       suppliers.value = res.list || []
     } catch (error) {
       console.error('加载供应商失败:', error)
@@ -112,10 +118,10 @@ export const useDataStore = defineStore('data', () => {
   }
 
   // 加载客户列表
-  const loadCustomers = async () => {
+  const loadCustomers = async (params = {}) => {
     customersLoading.value = true
     try {
-      const res = await customerApi.list({ page: 1, size: 100 })
+      const res = await customerApi.list({ page: 1, size: DEFAULT_LIST_PAGE_SIZE, ...params })
       customers.value = res.list || []
     } catch (error) {
       console.error('加载客户失败:', error)
@@ -126,25 +132,44 @@ export const useDataStore = defineStore('data', () => {
   }
 
   // 加载仓库列表（仅「库存菜单」或 inventory:warehouse 拉完整统计；否则下拉 options）
-  const loadWarehouses = async () => {
-    warehousesLoading.value = true
-    try {
-      const userStore = useUserStore()
-      const fullList =
-        userStore.hasPermission('inventory') || userStore.hasPermission('inventory:warehouse')
-      if (fullList) {
-        const res = await warehouseApi.list({ page: 1, size: 100 })
-        warehouses.value = res.list || []
-      } else {
-        const list = await warehouseApi.options()
-        warehouses.value = Array.isArray(list) ? list : []
+  const loadWarehouses = async (opts = {}, params = {}) => {
+    const userStore = useUserStore()
+    const fullList = opts.forceOptions
+      ? false
+      : opts.forceFull || userStore.hasPermission('inventory') || userStore.hasPermission('inventory:warehouse')
+
+    const run = async () => {
+      warehousesLoading.value = true
+      try {
+        if (fullList) {
+          const res = await warehouseApi.list({ page: 1, size: DEFAULT_LIST_PAGE_SIZE, ...params })
+          warehouses.value = res.list || []
+        } else {
+          const list = await warehouseApi.options()
+          warehouses.value = Array.isArray(list) ? list : []
+        }
+      } catch (error) {
+        console.error('加载仓库失败:', error)
+        warehouses.value = []
+      } finally {
+        warehousesLoading.value = false
       }
-    } catch (error) {
-      console.error('加载仓库失败:', error)
-      warehouses.value = []
-    } finally {
-      warehousesLoading.value = false
     }
+
+    if (fullList) {
+      if (!warehousesFullInFlight) {
+        warehousesFullInFlight = run().finally(() => {
+          warehousesFullInFlight = null
+        })
+      }
+      return warehousesFullInFlight
+    }
+    if (!warehousesOptionsInFlight) {
+      warehousesOptionsInFlight = run().finally(() => {
+        warehousesOptionsInFlight = null
+      })
+    }
+    return warehousesOptionsInFlight
   }
 
   // 加载商品分类（仅启用，供商品/库存等下拉；分类管理页自行调用 categoryApi.list 不带 status）
@@ -161,12 +186,18 @@ export const useDataStore = defineStore('data', () => {
     }
   }
 
-  // 加载用户列表
+  // 仅拉取当前登录用户详情（供顶栏资料区等，避免为分页设置再请求 /users/all）
   const loadUsers = async () => {
     usersLoading.value = true
     try {
-      const res = await userApi.all()
-      users.value = res || []
+      const userStore = useUserStore()
+      const uid = userStore.userInfo?.id
+      if (!uid) {
+        users.value = []
+        return
+      }
+      const u = await userApi.get(uid)
+      users.value = u ? [u] : []
     } catch (error) {
       console.error('加载用户失败:', error)
       users.value = []
@@ -175,15 +206,21 @@ export const useDataStore = defineStore('data', () => {
     }
   }
 
-  // 加载操作日志
-  const loadOperationLogs = async () => {
+  // 加载操作日志（按调用方分页参数）
+  const loadOperationLogs = async (params = {}) => {
     operationLogsLoading.value = true
     try {
-      const res = await operationLogApi.list({ page: 1, size: 100 })
+      const res = await operationLogApi.list({
+        page: 1,
+        size: 10,
+        ...params
+      })
       operationLogs.value = res.list || []
+      return res
     } catch (error) {
       console.error('加载操作日志失败:', error)
       operationLogs.value = []
+      return { list: [], total: 0, page: 1, size: 10 }
     } finally {
       operationLogsLoading.value = false
     }
@@ -193,7 +230,7 @@ export const useDataStore = defineStore('data', () => {
   const loadPurchaseOrders = async (params = {}) => {
     purchaseLoading.value = true
     try {
-      const res = await purchaseApi.list({ page: 1, size: 500, ...params })
+      const res = await purchaseApi.list({ page: 1, size: DEFAULT_LIST_PAGE_SIZE, ...params })
       purchaseOrders.value = res.list || []
     } catch (error) {
       console.error('加载采购订单失败:', error)
@@ -207,44 +244,29 @@ export const useDataStore = defineStore('data', () => {
   const loadInboundRecords = async (params = {}) => {
     inboundLoading.value = true
     try {
-      const res = await purchaseApi.inboundList({ page: 1, size: 500, ...params })
+      const res = await purchaseApi.inboundList({ page: 1, size: DEFAULT_LIST_PAGE_SIZE, ...params })
       inboundRecords.value = res.list || []
+      inboundRecordsTotal.value = Number(res.total) || 0
     } catch (error) {
       console.error('加载入库记录失败:', error)
       inboundRecords.value = []
+      inboundRecordsTotal.value = 0
     } finally {
       inboundLoading.value = false
     }
   }
 
-  // 加载出库记录（从销售订单中筛选已发货的）
-  const loadOutboundRecords = async () => {
+  // 加载出库记录（统一以后端出库流水为准，兼容手动“其他出库”）
+  const loadOutboundRecords = async (params = {}) => {
     outboundLoading.value = true
     try {
-      // 获取销售订单，已发货的作为出库记录
-      const res = await salesApi.list({ page: 1, size: 100 })
-      // 筛选已发货的订单作为出库记录
-      const shippedOrders = (res.list || []).filter(order =>
-        order.status === 'shipped' || order.status === 'completed' || order.shippedQuantity > 0
-      )
-      // 转换为出库记录格式
-      outboundRecords.value = shippedOrders.map(order => ({
-        id: order.id,
-        orderNo: `OUT${order.id.toString().padStart(6, '0')}`,
-        salesOrderNo: order.orderNo,
-        salesOrderId: order.id,
-        customerName: order.customerName,
-        productName: order.productName,
-        productId: order.productId,
-        quantity: order.shippedQuantity || order.quantity,
-        warehouseId: order.warehouseId,
-        warehouseName: order.warehouseName,
-        createTime: order.shipTime || order.updateTime,
-        operatorName: order.operatorName
-      }))
+      const res = await inventoryApi.outboundList({ page: 1, size: DEFAULT_LIST_PAGE_SIZE, ...params })
+      outboundRecords.value = res.list || []
+      outboundRecordsTotal.value = Number(res.total) || 0
     } catch (error) {
       console.error('加载出库记录失败:', error)
       outboundRecords.value = []
+      outboundRecordsTotal.value = 0
     } finally {
       outboundLoading.value = false
     }
@@ -254,7 +276,7 @@ export const useDataStore = defineStore('data', () => {
   const loadSalesOrders = async (params = {}) => {
     salesLoading.value = true
     try {
-      const res = await salesApi.list({ page: 1, size: 500, ...params })
+      const res = await salesApi.list({ page: 1, size: DEFAULT_LIST_PAGE_SIZE, ...params })
       salesOrders.value = res.list || []
     } catch (error) {
       console.error('加载销售订单失败:', error)
@@ -268,7 +290,7 @@ export const useDataStore = defineStore('data', () => {
   const loadInventory = async (params = {}) => {
     inventoryLoading.value = true
     try {
-      const res = await inventoryApi.list({ page: 1, size: 500, ...params })
+      const res = await inventoryApi.list({ page: 1, size: DEFAULT_LIST_PAGE_SIZE, ...params })
       inventoryData.value = res.list || []
     } catch (error) {
       console.error('加载库存失败:', error)
@@ -279,10 +301,10 @@ export const useDataStore = defineStore('data', () => {
   }
 
   // 加载预警数据
-  const loadWarnings = async () => {
+  const loadWarnings = async (params = {}) => {
     warningsLoading.value = true
     try {
-      const res = await inventoryApi.warningList({ page: 1, size: 100 })
+      const res = await inventoryApi.warningList({ page: 1, size: DEFAULT_LIST_PAGE_SIZE, ...params })
       warnings.value = res.list || []
     } catch (error) {
       console.error('加载预警失败:', error)
@@ -293,10 +315,10 @@ export const useDataStore = defineStore('data', () => {
   }
 
   // 加载调拨记录
-  const loadTransfers = async () => {
+  const loadTransfers = async (params = {}) => {
     transfersLoading.value = true
     try {
-      const res = await inventoryApi.transferList({ page: 1, size: 100 })
+      const res = await inventoryApi.transferList({ page: 1, size: DEFAULT_LIST_PAGE_SIZE, ...params })
       transfers.value = res.list || []
     } catch (error) {
       console.error('加载调拨记录失败:', error)
@@ -307,10 +329,10 @@ export const useDataStore = defineStore('data', () => {
   }
 
   // 加载售后工单
-  const loadAftersales = async () => {
+  const loadAftersales = async (params = {}) => {
     aftersalesLoading.value = true
     try {
-      const res = await aftersalesApi.list({ page: 1, size: 100 })
+      const res = await aftersalesApi.list({ page: 1, size: DEFAULT_LIST_PAGE_SIZE, ...params })
       aftersalesOrders.value = res.list || []
     } catch (error) {
       console.error('加载售后工单失败:', error)
@@ -457,8 +479,10 @@ export const useDataStore = defineStore('data', () => {
     transfers,
     transfersLoading,
     inboundRecords,
+    inboundRecordsTotal,
     inboundLoading,
     outboundRecords,
+    outboundRecordsTotal,
     outboundLoading,
     aftersalesOrders,
     aftersalesLoading,

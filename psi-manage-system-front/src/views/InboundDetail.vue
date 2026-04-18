@@ -1,5 +1,5 @@
 <template>
-  <div class="inbound-detail">
+  <div class="inbound-detail" v-loading="pageLoading" element-loading-text="加载中...">
     <el-card>
       <template #header>
         <div class="card-header">
@@ -114,6 +114,7 @@ const route = useRoute()
 
 const inboundId = computed(() => route.params.id)
 const inbound = ref(null)
+const pageLoading = ref(true)
 
 // 仓库名称以入库详情返回为准
 const getWarehouseName = (warehouseId) => {
@@ -128,17 +129,22 @@ const supplierDisplayName = computed(() => {
 })
 
 onMounted(async () => {
-  const id = Number(inboundId.value)
-  if (!id) {
-    ElMessage.warning('入库单 ID 无效')
-    router.replace('/purchase')
-    return
-  }
+  pageLoading.value = true
   try {
-    inbound.value = await purchaseApi.inboundGet(id)
-  } catch (e) {
-    ElMessage.error(e.message || '加载入库单失败')
-    router.replace('/purchase')
+    const id = Number(inboundId.value)
+    if (!id) {
+      ElMessage.warning('入库单 ID 无效')
+      router.replace('/purchase')
+      return
+    }
+    try {
+      inbound.value = await purchaseApi.inboundGet(id)
+    } catch (e) {
+      ElMessage.error(e.message || '加载入库单失败')
+      router.replace('/purchase')
+    }
+  } finally {
+    pageLoading.value = false
   }
 })
 
@@ -154,7 +160,7 @@ const printInbound = () => { ElMessage.success('打印入库单功能已触发')
     align-items: center;
     .header-actions { display: flex; gap: 12px; }
   }
-  .order-no { color: #E94560; font-family: monospace; &.success { color: #67C23A; } }
+  .order-no { color: #E94560; &.success { color: #67C23A; } }
   .inbound-info {
     .info-row {
       display: grid;

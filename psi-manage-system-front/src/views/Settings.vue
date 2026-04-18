@@ -1,5 +1,5 @@
 <template>
-  <div class="settings-page">
+  <div class="settings-page" v-loading="pageLoading" element-loading-text="加载中...">
     <el-tabs v-model="activeTab" class="page-tabs">
       <!-- 用户管理 - 仅超级管理员可见 -->
       <el-tab-pane label="用户管理" name="users" v-if="isCurrentUserSuperAdmin">
@@ -9,7 +9,7 @@
               <el-button type="primary" size="small" @click="openUserDialog"><el-icon><Plus /></el-icon>添加用户</el-button>
             </div>
           </template>
-          <el-table :data="paginatedUsers" empty-text="暂无数据" style="width: 100%" table-layout="fixed">
+          <el-table :data="userTableList" empty-text="暂无数据" style="width: 100%" table-layout="fixed">
             <el-table-column label="登录名" prop="username" min-width="120" show-overflow-tooltip />
             <el-table-column label="姓名" prop="name" min-width="120" show-overflow-tooltip />
             <el-table-column label="邮箱" prop="email" min-width="200" show-overflow-tooltip />
@@ -37,7 +37,7 @@
             <el-pagination
               v-model:current-page="userCurrentPage"
               v-model:page-size="userPageSize"
-              :total="users.length"
+              :total="userTotal"
               :page-sizes="[10, 20, 50, 100]"
               layout="total, sizes, prev, pager, next, jumper"
             />
@@ -53,7 +53,7 @@
               <el-button type="primary" size="small" @click="openRoleDialog"><el-icon><Plus /></el-icon>添加角色</el-button>
             </div>
           </template>
-          <el-table :data="paginatedRoleList" empty-text="暂无数据" style="width: 100%" table-layout="fixed">
+          <el-table :data="roleTableList" empty-text="暂无数据" style="width: 100%" table-layout="fixed">
             <el-table-column label="角色名称" prop="name" min-width="160" show-overflow-tooltip />
             <el-table-column label="角色级别" min-width="108" align="center">
               <template #default="{ row }">
@@ -80,7 +80,7 @@
             <el-pagination
               v-model:current-page="roleCurrentPage"
               v-model:page-size="rolePageSize"
-              :total="roleList.length"
+              :total="roleTotal"
               :page-sizes="[10, 20, 50, 100]"
               layout="total, sizes, prev, pager, next, jumper"
             />
@@ -116,7 +116,7 @@
               <el-button type="primary" size="small" @click="openCategoryDialog"><el-icon><Plus /></el-icon>添加分类</el-button>
             </div>
           </template>
-          <el-table :data="paginatedCategoryList" empty-text="暂无数据" style="width: 100%" table-layout="fixed">
+          <el-table :data="categoryTableList" empty-text="暂无数据" style="width: 100%" table-layout="fixed">
             <el-table-column label="分类名称" prop="name" min-width="160" show-overflow-tooltip />
             <el-table-column label="分类编码" prop="code" min-width="132" show-overflow-tooltip />
             <el-table-column label="排序" prop="sort" min-width="88" align="center" />
@@ -136,7 +136,7 @@
             <el-pagination
               v-model:current-page="categoryCurrentPage"
               v-model:page-size="categoryPageSize"
-              :total="categoryList.length"
+              :total="categoryTotal"
               :page-sizes="[10, 20, 50, 100]"
               layout="total, sizes, prev, pager, next, jumper"
             />
@@ -172,7 +172,7 @@
             <el-pagination
               v-model:current-page="logCurrentPage"
               v-model:page-size="logPageSize"
-              :total="operationLogs.length"
+              :total="logTotal"
               :page-sizes="[10, 20, 50, 100]"
               layout="total, sizes, prev, pager, next, jumper"
             />
@@ -189,7 +189,7 @@
         <el-form-item label="邮箱" prop="email"><el-input v-model="userForm.email" placeholder="输入邮箱" /></el-form-item>
         <el-form-item label="角色" prop="roleId">
           <el-select v-model="userForm.roleId" style="width: 100%">
-            <el-option v-for="role in roleList" :key="role.id" :label="role.name" :value="role.id" />
+            <el-option v-for="role in roleListAll" :key="role.id" :label="role.name" :value="role.id" />
           </el-select>
         </el-form-item>
         <el-form-item label="密码" v-if="!editUserMode"><el-input v-model="userForm.password" type="password" placeholder="设置初始密码" /></el-form-item>
@@ -246,7 +246,7 @@ import { useRouter, useRoute } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { useDataStore } from '@/stores/data'
 import { useUserStore } from '@/stores/user'
-import { userApi, roleApi, categoryApi, systemConfigApi } from '@/api'
+import { userApi, roleApi, categoryApi, systemConfigApi, productApi } from '@/api'
 import { formatTime } from '@/utils/time'
 
 const router = useRouter()
@@ -254,17 +254,34 @@ const route = useRoute()
 
 const dataStore = useDataStore()
 const userStore = useUserStore()
-const users = computed(() => dataStore.users || [])
 const operationLogs = computed(() => dataStore.operationLogs || [])
 
-// 用户分页
+// 用户管理（服务端分页）
+const userTableList = ref([])
+const userTotal = ref(0)
 const userCurrentPage = ref(1)
 const userPageSize = ref(10)
-const paginatedUsers = computed(() => {
-  const start = (userCurrentPage.value - 1) * userPageSize.value
-  const end = start + userPageSize.value
-  return users.value.slice(start, end)
-})
+
+const loadUsersPage = async () => {
+  try {
+    const res = await userApi.list({
+      page: userCurrentPage.value,
+      size: userPageSize.value
+    })
+    const list = res?.list || []
+    const total = Number(res?.total) || 0
+    if (list.length === 0 && userCurrentPage.value > 1 && total > 0) {
+      userCurrentPage.value -= 1
+      return loadUsersPage()
+    }
+    userTableList.value = list
+    userTotal.value = total
+  } catch (error) {
+    console.error('加载用户列表失败:', error)
+    userTableList.value = []
+    userTotal.value = 0
+  }
+}
 
 // 判断当前登录用户是否是超级管理员
 const isCurrentUserSuperAdmin = computed(() => userStore.userInfo?.roleId === 1)
@@ -292,19 +309,42 @@ const editUserMode = ref(false)
 const currentUser = ref(null)
 const userFormRef = ref()
 
-// 角色管理数据
-const roleList = ref([])
-const allPermissions = ref([])
-const rolePermissions = ref({}) // 存储每个角色的权限ID列表
-
-// 角色分页
+// 角色管理：表格分页 + 全量列表供用户表单/显示角色名
+const roleTableList = ref([])
+const roleTotal = ref(0)
+const roleListAll = ref([])
 const roleCurrentPage = ref(1)
 const rolePageSize = ref(10)
-const paginatedRoleList = computed(() => {
-  const start = (roleCurrentPage.value - 1) * rolePageSize.value
-  const end = start + rolePageSize.value
-  return roleList.value.slice(start, end)
-})
+
+const loadRolesAllForForm = async () => {
+  try {
+    roleListAll.value = await roleApi.list() || []
+  } catch (error) {
+    console.error('加载角色列表失败:', error)
+    roleListAll.value = []
+  }
+}
+
+const loadRolePage = async () => {
+  try {
+    const res = await roleApi.listPage({
+      page: roleCurrentPage.value,
+      size: rolePageSize.value
+    })
+    const list = res?.list || []
+    const total = Number(res?.total) || 0
+    if (list.length === 0 && roleCurrentPage.value > 1 && total > 0) {
+      roleCurrentPage.value -= 1
+      return loadRolePage()
+    }
+    roleTableList.value = list
+    roleTotal.value = total
+  } catch (error) {
+    console.error('加载角色分页失败:', error)
+    roleTableList.value = []
+    roleTotal.value = 0
+  }
+}
 
 // 打开权限管理页面
 const openPermissionDialog = (role) => {
@@ -321,8 +361,9 @@ const roleRules = {
   name: [{ required: true, message: '请输入角色名称', trigger: 'blur' }]
 }
 
-// 商品分类数据
-const categoryList = ref([])
+// 商品分类（服务端分页）
+const categoryTableList = ref([])
+const categoryTotal = ref(0)
 const categoryCurrentPage = ref(1)
 const categoryPageSize = ref(10)
 const categoryDialogVisible = ref(false)
@@ -334,25 +375,47 @@ const categoryRules = {
   name: [{ required: true, message: '请输入分类名称', trigger: 'blur' }]
 }
 
-// 分页后的分类列表
-const paginatedCategoryList = computed(() => {
-  const start = (categoryCurrentPage.value - 1) * categoryPageSize.value
-  const end = start + categoryPageSize.value
-  return categoryList.value.slice(start, end)
-})
+const loadCategoryPage = async () => {
+  try {
+    const res = await categoryApi.listPage({
+      page: categoryCurrentPage.value,
+      size: categoryPageSize.value
+    })
+    const list = res?.list || []
+    const total = Number(res?.total) || 0
+    if (list.length === 0 && categoryCurrentPage.value > 1 && total > 0) {
+      categoryCurrentPage.value -= 1
+      return loadCategoryPage()
+    }
+    categoryTableList.value = list
+    categoryTotal.value = total
+  } catch (error) {
+    console.error('加载分类分页失败:', error)
+    categoryTableList.value = []
+    categoryTotal.value = 0
+  }
+}
 
 // 操作日志分页
+const pageLoading = ref(true)
 const logCurrentPage = ref(1)
 const logPageSize = ref(10)
-const paginatedLogs = computed(() => {
-  const start = (logCurrentPage.value - 1) * logPageSize.value
-  const end = start + logPageSize.value
-  return operationLogs.value.slice(start, end)
-})
+const logTotal = ref(0)
+const paginatedLogs = computed(() => operationLogs.value)
+const canViewLogs = computed(() => userStore.userInfo?.roleId === 1 || userStore.hasPermission('settings:user'))
+
+const loadOperationLogsPage = async () => {
+  if (!canViewLogs.value) return
+  const res = await dataStore.loadOperationLogs({
+    page: logCurrentPage.value,
+    size: logPageSize.value
+  })
+  logTotal.value = Number(res?.total) || 0
+}
 
 // 根据角色ID获取角色名称
 const getUserRoleName = (user) => {
-  const role = roleList.value.find(r => r.id === user.roleId)
+  const role = roleListAll.value.find(r => r.id === user.roleId)
   return role ? role.name : '普通用户'
 }
 
@@ -389,7 +452,7 @@ const submitRole = async () => {
           ElMessage.success('角色添加成功')
         }
         roleDialogVisible.value = false
-        await loadRolesAndPermissions()
+        await Promise.all([loadRolePage(), loadRolesAllForForm()])
       } catch (error) {
         ElMessage.error(error.message || '操作失败')
       }
@@ -413,7 +476,7 @@ const deleteRole = async (role) => {
 
     await roleApi.delete(role.id)
     ElMessage.success('角色已删除')
-    await loadRolesAndPermissions()
+    await Promise.all([loadRolePage(), loadRolesAllForForm()])
   } catch (error) {
     if (error !== 'cancel') {
       ElMessage.error(error.message || '删除失败')
@@ -450,7 +513,8 @@ const submitCategory = async () => {
           ElMessage.success('分类添加成功')
         }
         categoryDialogVisible.value = false
-        await loadCategories()
+        await loadCategoryPage()
+        await dataStore.loadCategories()
       } catch (error) {
         ElMessage.error(error.message || '操作失败')
       }
@@ -460,14 +524,19 @@ const submitCategory = async () => {
 
 // 删除分类
 const deleteCategory = async (category) => {
-  // 检查是否有商品使用该分类
-  const productsUsingCategory = dataStore.products?.filter(p => p.categoryName === category.name || p.category === category.name) || []
-  if (productsUsingCategory.length > 0) {
-    ElMessage.warning(`该分类已被 ${productsUsingCategory.length} 个商品使用，无法删除`)
-    return
-  }
-
   try {
+    // 删除前按分类查 1 条，避免初始化全量拉商品列表
+    const productCheck = await productApi.list({
+      page: 1,
+      size: 1,
+      categoryName: category.name
+    })
+    const productsUsingCategory = Number(productCheck?.total) || (productCheck?.list?.length || 0)
+    if (productsUsingCategory > 0) {
+      ElMessage.warning(`该分类已被 ${productsUsingCategory} 个商品使用，无法删除`)
+      return
+    }
+
     await ElMessageBox.confirm(`确定要删除分类 "${category.name}" 吗？`, '删除确认', {
       confirmButtonText: '确定',
       cancelButtonText: '取消',
@@ -476,39 +545,12 @@ const deleteCategory = async (category) => {
 
     await categoryApi.delete(category.id)
     ElMessage.success('分类已删除')
-    await loadCategories()
+    await loadCategoryPage()
+    await dataStore.loadCategories()
   } catch (error) {
     if (error !== 'cancel') {
       ElMessage.error(error.message || '删除失败')
     }
-  }
-}
-
-// 加载分类数据
-const loadCategories = async () => {
-  try {
-    categoryList.value = await categoryApi.list() || []
-  } catch (error) {
-    console.error('加载分类失败:', error)
-  }
-}
-
-// 加载角色和权限数据
-const loadRolesAndPermissions = async () => {
-  try {
-    // 获取角色列表
-    roleList.value = await roleApi.list() || []
-
-    // 获取所有权限
-    allPermissions.value = await roleApi.allPermissions() || []
-
-    // 获取每个角色的权限
-    for (const role of roleList.value) {
-      const permissions = await roleApi.permissions(role.id)
-      rolePermissions.value[role.id] = permissions.map(p => p.id)
-    }
-  } catch (error) {
-    console.error('加载角色权限失败:', error)
   }
 }
 
@@ -599,7 +641,7 @@ const submitUser = async () => {
           ElMessage.success('用户添加成功')
         }
         userDialogVisible.value = false
-        // 刷新用户列表
+        await loadUsersPage()
         await dataStore.loadUsers()
       } catch (error) {
         ElMessage.error(error.message || '操作失败')
@@ -642,6 +684,7 @@ const deleteUser = async (user) => {
 
     await userApi.delete(user.id)
     ElMessage.success('用户已删除')
+    await loadUsersPage()
     await dataStore.loadUsers()
   } catch (error) {
     if (error !== 'cancel') {
@@ -650,27 +693,50 @@ const deleteUser = async (user) => {
   }
 }
 
-// 按角色与权限按需加载：超级管理员进设置页才拉用户/角色/商品/分类；操作日志需 settings:user
+// 按角色与权限按需加载：超级管理员进设置页拉用户/角色/分类；操作日志按分页参数请求
 onMounted(async () => {
-  const tasks = []
-  tasks.push(loadSystemConfig())
-  if (userStore.userInfo?.roleId === 1) {
-    tasks.push(
-      dataStore.loadUsers(),
-      dataStore.loadOperationLogs(),
-      dataStore.loadProducts(),
-      loadRolesAndPermissions(),
-      loadCategories()
-    )
-  } else if (userStore.hasPermission('settings:user')) {
-    tasks.push(dataStore.loadOperationLogs())
+  pageLoading.value = true
+  try {
+    const tasks = []
+    tasks.push(loadSystemConfig())
+    if (userStore.userInfo?.roleId === 1) {
+      tasks.push(
+        dataStore.loadUsers(),
+        loadOperationLogsPage(),
+        loadUsersPage(),
+        loadRolesAllForForm(),
+        loadRolePage(),
+        loadCategoryPage()
+      )
+    } else if (userStore.hasPermission('settings:user')) {
+      tasks.push(loadOperationLogsPage())
+    }
+    await Promise.all(tasks)
+  } finally {
+    pageLoading.value = false
   }
-  await Promise.all(tasks)
+})
+
+watch([logCurrentPage, logPageSize], () => {
+  loadOperationLogsPage()
+})
+
+watch([userCurrentPage, userPageSize], () => {
+  if (isCurrentUserSuperAdmin.value) loadUsersPage()
+})
+
+watch([roleCurrentPage, rolePageSize], () => {
+  if (isCurrentUserSuperAdmin.value) loadRolePage()
+})
+
+watch([categoryCurrentPage, categoryPageSize], () => {
+  if (isCurrentUserSuperAdmin.value) loadCategoryPage()
 })
 </script>
 
 <style lang="scss" scoped>
 .settings-page {
+  min-height: 360px;
   .page-tabs { :deep(.el-tabs__header) { margin-bottom: 16px; } }
   .card-header { display: flex; justify-content: flex-end; align-items: center; }
   .pagination-wrapper { display: flex; justify-content: flex-end; padding-top: 16px; }

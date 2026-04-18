@@ -18,7 +18,9 @@ import com.smartims.mapper.*;
 import com.smartims.security.UserContext;
 import com.smartims.service.InventoryEmbeddingSyncService;
 import com.smartims.service.InventoryService;
+import com.smartims.service.SystemConfigService;
 import com.smartims.util.CodeGenerator;
+import com.smartims.util.InventoryStatusUtil;
 import com.smartims.util.StatusNameResolver;
 import com.smartims.vo.InventoryStatsVO;
 import lombok.RequiredArgsConstructor;
@@ -32,10 +34,12 @@ import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.time.LocalTime;
 import java.time.YearMonth;
 import java.time.format.DateTimeFormatter;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -69,6 +73,22 @@ public class InventoryServiceImpl implements InventoryService {
     private final DashScopeMultimodalEmbeddingService dashScopeMultimodalEmbeddingService;
     private final ImageVectorSearchHelper imageVectorSearchHelper;
     private final InventoryEmbeddingSyncService inventoryEmbeddingSyncService;
+    private final SystemConfigService systemConfigService;
+
+    /**
+     * 与仪表盘呆滞 Top10 一致：库存行未单独设置 {@code stagnant_days} 时，使用系统「呆滞商品天数」。
+     */
+    private int resolveDefaultStagnantThreshold() {
+        try {
+            Integer cfg = systemConfigService.getSystemConfig().getStaleDays();
+            if (cfg != null && cfg >= 1) {
+                return cfg;
+            }
+        } catch (Exception e) {
+            log.debug("读取系统呆滞商品天数失败，使用默认 90", e);
+        }
+        return 90;
+    }
 
     @Override
     public PageResult<Inventory> getInventoryList(PageQuery pageQuery) {
@@ -96,16 +116,14 @@ public class InventoryServiceImpl implements InventoryService {
         applyDayRange(queryWrapper, pageQuery.getLastInboundStart(), pageQuery.getLastInboundEnd(), Inventory::getLastInboundTime);
 
         if (StringUtils.hasText(pageQuery.getStagnantStatus())) {
+            int defStale = resolveDefaultStagnantThreshold();
+            String stagnantDayExpr =
+                    "TIMESTAMPDIFF(DAY, COALESCE(last_outbound_time, last_inbound_time, create_time), NOW())";
+            String stagnantThreshExpr = "COALESCE(stagnant_days, " + defStale + ")";
             if ("stagnant".equalsIgnoreCase(pageQuery.getStagnantStatus())) {
-                queryWrapper.apply(
-                        "TIMESTAMPDIFF(DAY, COALESCE(last_outbound_time, last_inbound_time), NOW()) >= COALESCE(stagnant_days, 90) "
-                                + "AND COALESCE(last_outbound_time, last_inbound_time) IS NOT NULL"
-                );
+                queryWrapper.apply(stagnantDayExpr + " >= " + stagnantThreshExpr);
             } else if ("normal".equalsIgnoreCase(pageQuery.getStagnantStatus())) {
-                queryWrapper.and(w -> w.apply(
-                        "(COALESCE(last_outbound_time, last_inbound_time) IS NULL OR "
-                                + "TIMESTAMPDIFF(DAY, COALESCE(last_outbound_time, last_inbound_time), NOW()) < COALESCE(stagnant_days, 90))"
-                ));
+                queryWrapper.apply(stagnantDayExpr + " < " + stagnantThreshExpr);
             }
         }
 
@@ -121,6 +139,7 @@ public class InventoryServiceImpl implements InventoryService {
 
         Page<Inventory> page = new Page<>(pageQuery.getPage(), pageQuery.getSize());
         Page<Inventory> result = inventoryMapper.selectPage(page, queryWrapper);
+        enrichInventoryDisplayFields(result.getRecords());
 
         return PageResult.build(result.getTotal(), result.getCurrent(), result.getSize(), result.getRecords());
     }
@@ -131,6 +150,7 @@ public class InventoryServiceImpl implements InventoryService {
         if (inventory == null || inventory.getDeleted() == 1) {
             throw new BusinessException("库存记录不存在");
         }
+        enrichInventoryDisplayFields(List.of(inventory));
         return inventory;
     }
 
@@ -139,7 +159,9 @@ public class InventoryServiceImpl implements InventoryService {
         LambdaQueryWrapper<Inventory> queryWrapper = new LambdaQueryWrapper<>();
         queryWrapper.eq(Inventory::getProductId, productId);
         queryWrapper.eq(Inventory::getDeleted, 0);
-        return inventoryMapper.selectList(queryWrapper);
+        List<Inventory> list = inventoryMapper.selectList(queryWrapper);
+        enrichInventoryDisplayFields(list);
+        return list;
     }
 
     @Override
@@ -192,7 +214,7 @@ public class InventoryServiceImpl implements InventoryService {
             transfer.setOperatorId(operatorId);
             SysUser user = sysUserMapper.selectById(operatorId);
             if (user != null) {
-                transfer.setOperatorName(user.getName());
+                transfer.setOperatorName(resolveOperatorName(user));
             }
         }
 
@@ -328,6 +350,7 @@ public class InventoryServiceImpl implements InventoryService {
         }
 
         fromInventory.setStock(fromInventory.getStock() - transfer.getQuantity());
+        updateStockStatus(fromInventory);
         inventoryMapper.updateById(fromInventory);
 
         // 增加目标仓库库存
@@ -363,6 +386,7 @@ public class InventoryServiceImpl implements InventoryService {
         } else {
             toInventory.setStock(toInventory.getStock() + transfer.getQuantity());
             toInventory.setLastInboundTime(LocalDateTime.now());
+            updateStockStatus(toInventory);
             inventoryMapper.updateById(toInventory);
         }
 
@@ -379,11 +403,25 @@ public class InventoryServiceImpl implements InventoryService {
         LambdaQueryWrapper<InventoryTransfer> queryWrapper = new LambdaQueryWrapper<>();
         queryWrapper.eq(InventoryTransfer::getDeleted, 0);
 
-        if (StringUtils.hasText(pageQuery.getKeyword())) {
-            queryWrapper.and(wrapper -> wrapper
-                    .like(InventoryTransfer::getOrderNo, pageQuery.getKeyword())
+        if (StringUtils.hasText(pageQuery.getTransferStatus())) {
+            queryWrapper.eq(InventoryTransfer::getStatus, pageQuery.getTransferStatus().trim());
+        }
+        if (pageQuery.getWarehouseId() != null) {
+            Long wid = pageQuery.getWarehouseId();
+            queryWrapper.and(w -> w.eq(InventoryTransfer::getFromWarehouseId, wid)
                     .or()
-                    .like(InventoryTransfer::getProductName, pageQuery.getKeyword())
+                    .eq(InventoryTransfer::getToWarehouseId, wid));
+        }
+        applyTransferCreateTimeRange(queryWrapper, pageQuery.getCreateTimeStart(), pageQuery.getCreateTimeEnd());
+
+        if (StringUtils.hasText(pageQuery.getKeyword())) {
+            String kw = pageQuery.getKeyword().trim();
+            queryWrapper.and(wrapper -> wrapper
+                    .like(InventoryTransfer::getOrderNo, kw)
+                    .or()
+                    .like(InventoryTransfer::getProductName, kw)
+                    .or()
+                    .like(InventoryTransfer::getSku, kw)
             );
         }
 
@@ -391,6 +429,8 @@ public class InventoryServiceImpl implements InventoryService {
 
         Page<InventoryTransfer> page = new Page<>(pageQuery.getPage(), pageQuery.getSize());
         Page<InventoryTransfer> result = inventoryTransferMapper.selectPage(page, queryWrapper);
+        enrichTransferOperators(result.getRecords());
+        enrichTransferProductFields(result.getRecords());
 
         return PageResult.build(result.getTotal(), result.getCurrent(), result.getSize(), result.getRecords());
     }
@@ -401,7 +441,181 @@ public class InventoryServiceImpl implements InventoryService {
         if (transfer == null || transfer.getDeleted() == 1) {
             throw new BusinessException("调拨记录不存在");
         }
+        enrichTransferOperators(List.of(transfer));
+        enrichTransferProductFields(List.of(transfer));
         return transfer;
+    }
+
+    /**
+     * 调拨记录操作人兜底补全：
+     * 1) 兼容历史数据 operator_name 为空；
+     * 2) 兼容用户姓名为空时回退 username。
+     */
+    private void enrichTransferOperators(List<InventoryTransfer> transfers) {
+        if (transfers == null || transfers.isEmpty()) {
+            return;
+        }
+        Set<Long> operatorIds = new HashSet<>();
+        for (InventoryTransfer transfer : transfers) {
+            if (transfer == null) {
+                continue;
+            }
+            if (!StringUtils.hasText(transfer.getOperatorName()) && transfer.getOperatorId() != null) {
+                operatorIds.add(transfer.getOperatorId());
+            }
+        }
+        if (operatorIds.isEmpty()) {
+            return;
+        }
+
+        LambdaQueryWrapper<SysUser> userQuery = new LambdaQueryWrapper<>();
+        userQuery.in(SysUser::getId, operatorIds);
+        userQuery.eq(SysUser::getDeleted, 0);
+        List<SysUser> users = sysUserMapper.selectList(userQuery);
+        if (users.isEmpty()) {
+            return;
+        }
+
+        Map<Long, String> operatorNameMap = new HashMap<>();
+        for (SysUser user : users) {
+            if (user != null && user.getId() != null) {
+                operatorNameMap.put(user.getId(), resolveOperatorName(user));
+            }
+        }
+        for (InventoryTransfer transfer : transfers) {
+            if (transfer == null || StringUtils.hasText(transfer.getOperatorName()) || transfer.getOperatorId() == null) {
+                continue;
+            }
+            transfer.setOperatorName(operatorNameMap.get(transfer.getOperatorId()));
+        }
+    }
+
+    /**
+     * 调拨列表/详情：按 productId 批量补商品主图与分类名，供前端表格展示缩略图。
+     */
+    private void enrichTransferProductFields(List<InventoryTransfer> transfers) {
+        if (transfers == null || transfers.isEmpty()) {
+            return;
+        }
+        Set<Long> productIds = new HashSet<>();
+        for (InventoryTransfer transfer : transfers) {
+            if (transfer != null && transfer.getProductId() != null) {
+                productIds.add(transfer.getProductId());
+            }
+        }
+        if (productIds.isEmpty()) {
+            return;
+        }
+        LambdaQueryWrapper<Product> productQuery = new LambdaQueryWrapper<>();
+        productQuery.in(Product::getId, productIds);
+        productQuery.eq(Product::getDeleted, 0);
+        List<Product> products = productMapper.selectList(productQuery);
+        Map<Long, Product> productMap = new HashMap<>();
+        for (Product product : products) {
+            if (product != null && product.getId() != null) {
+                productMap.put(product.getId(), product);
+            }
+        }
+        for (InventoryTransfer transfer : transfers) {
+            if (transfer == null || transfer.getProductId() == null) {
+                continue;
+            }
+            Product product = productMap.get(transfer.getProductId());
+            if (product != null) {
+                transfer.setProductImage(product.getImage());
+                transfer.setCategory(product.getCategoryName());
+            }
+        }
+    }
+
+    /**
+     * 为库存列表补充前端展示字段，避免前端再调用商品/仓库分页接口拼装数据。
+     */
+    private void enrichInventoryDisplayFields(List<Inventory> inventories) {
+        if (inventories == null || inventories.isEmpty()) {
+            return;
+        }
+        Set<Long> productIds = new HashSet<>();
+        Set<Long> warehouseIds = new HashSet<>();
+        for (Inventory inventory : inventories) {
+            if (inventory == null) {
+                continue;
+            }
+            if (inventory.getProductId() != null) {
+                productIds.add(inventory.getProductId());
+            }
+            if (inventory.getWarehouseId() != null) {
+                warehouseIds.add(inventory.getWarehouseId());
+            }
+        }
+
+        Map<Long, Product> productMap = new HashMap<>();
+        if (!productIds.isEmpty()) {
+            LambdaQueryWrapper<Product> productQuery = new LambdaQueryWrapper<>();
+            productQuery.in(Product::getId, productIds);
+            productQuery.eq(Product::getDeleted, 0);
+            List<Product> products = productMapper.selectList(productQuery);
+            for (Product product : products) {
+                if (product != null && product.getId() != null) {
+                    productMap.put(product.getId(), product);
+                }
+            }
+        }
+
+        Map<Long, Warehouse> warehouseMap = new HashMap<>();
+        if (!warehouseIds.isEmpty()) {
+            LambdaQueryWrapper<Warehouse> warehouseQuery = new LambdaQueryWrapper<>();
+            warehouseQuery.in(Warehouse::getId, warehouseIds);
+            warehouseQuery.eq(Warehouse::getDeleted, 0);
+            List<Warehouse> warehouses = warehouseMapper.selectList(warehouseQuery);
+            for (Warehouse warehouse : warehouses) {
+                if (warehouse != null && warehouse.getId() != null) {
+                    warehouseMap.put(warehouse.getId(), warehouse);
+                }
+            }
+        }
+
+        for (Inventory inventory : inventories) {
+            if (inventory == null) {
+                continue;
+            }
+            Product product = inventory.getProductId() == null ? null : productMap.get(inventory.getProductId());
+            if (product != null) {
+                inventory.setProductImage(product.getImage());
+                inventory.setProductStatus(product.getStatus());
+                if (!StringUtils.hasText(inventory.getProductName())) {
+                    inventory.setProductName(product.getName());
+                }
+                if (!StringUtils.hasText(inventory.getSpec())) {
+                    inventory.setSpec(product.getSpec());
+                }
+                if (!StringUtils.hasText(inventory.getCategory())) {
+                    inventory.setCategory(product.getCategoryName());
+                }
+                if (!StringUtils.hasText(inventory.getSku())) {
+                    inventory.setSku(product.getCode());
+                }
+            }
+
+            Warehouse warehouse = inventory.getWarehouseId() == null ? null : warehouseMap.get(inventory.getWarehouseId());
+            if (warehouse != null) {
+                inventory.setWarehouseCode(warehouse.getCode());
+                inventory.setWarehouseStatus(warehouse.getStatus());
+                if (!StringUtils.hasText(inventory.getWarehouseName())) {
+                    inventory.setWarehouseName(warehouse.getName());
+                }
+            }
+        }
+    }
+
+    private String resolveOperatorName(SysUser user) {
+        if (user == null) {
+            return null;
+        }
+        if (StringUtils.hasText(user.getName())) {
+            return user.getName();
+        }
+        return user.getUsername();
     }
 
     @Override
@@ -730,18 +944,7 @@ public class InventoryServiceImpl implements InventoryService {
      * 更新库存状态
      */
     private void updateStockStatus(Inventory inventory) {
-        int stock = inventory.getStock() != null ? inventory.getStock() : 0;
-        int safeStock = inventory.getSafeStock() != null ? inventory.getSafeStock() : 10;
-
-        if (stock <= 0) {
-            inventory.setStatus("critical");
-        } else if (stock < safeStock / 2) {
-            inventory.setStatus("critical");
-        } else if (stock < safeStock) {
-            inventory.setStatus("warning");
-        } else {
-            inventory.setStatus("normal");
-        }
+        InventoryStatusUtil.applyStatus(inventory);
     }
 
     @Override
@@ -771,18 +974,51 @@ public class InventoryServiceImpl implements InventoryService {
 
     @Override
     public PageResult<OutboundRecord> getOutboundRecordList(PageQuery pageQuery) {
+        Long effectiveProductId = pageQuery.getProductId();
+        Long effectiveWarehouseId = pageQuery.getWarehouseId();
+        if (pageQuery.getInventoryId() != null) {
+            Inventory inv = inventoryMapper.selectById(pageQuery.getInventoryId());
+            if (inv == null) {
+                return PageResult.build(0L, pageQuery.getPage(), pageQuery.getSize(), Collections.emptyList());
+            }
+            effectiveProductId = inv.getProductId();
+            effectiveWarehouseId = inv.getWarehouseId();
+        }
+
         LambdaQueryWrapper<OutboundRecord> queryWrapper = new LambdaQueryWrapper<>();
         queryWrapper.eq(OutboundRecord::getDeleted, 0);
 
+        if (effectiveWarehouseId != null) {
+            queryWrapper.eq(OutboundRecord::getWarehouseId, effectiveWarehouseId);
+        }
+        if (effectiveProductId != null) {
+            queryWrapper.eq(OutboundRecord::getProductId, effectiveProductId);
+        }
+
+        LocalDateTime outboundStart = parseQueryDayStart(pageQuery.getCreateTimeStart());
+        LocalDateTime outboundEnd = parseQueryDayEnd(pageQuery.getCreateTimeEnd());
+        if (outboundStart != null) {
+            queryWrapper.ge(OutboundRecord::getCreateTime, outboundStart);
+        }
+        if (outboundEnd != null) {
+            queryWrapper.le(OutboundRecord::getCreateTime, outboundEnd);
+        }
+        if (StringUtils.hasText(pageQuery.getOperatorName())) {
+            queryWrapper.like(OutboundRecord::getOperatorName, pageQuery.getOperatorName().trim());
+        }
+
         if (StringUtils.hasText(pageQuery.getKeyword())) {
+            String kw = pageQuery.getKeyword().trim();
             queryWrapper.and(wrapper -> wrapper
-                    .like(OutboundRecord::getOrderNo, pageQuery.getKeyword())
+                    .like(OutboundRecord::getOrderNo, kw)
                     .or()
-                    .like(OutboundRecord::getProductName, pageQuery.getKeyword())
+                    .like(OutboundRecord::getProductName, kw)
                     .or()
-                    .like(OutboundRecord::getWarehouseName, pageQuery.getKeyword())
+                    .like(OutboundRecord::getWarehouseName, kw)
                     .or()
-                    .like(OutboundRecord::getCustomerName, pageQuery.getKeyword())
+                    .like(OutboundRecord::getCustomerName, kw)
+                    .or()
+                    .like(OutboundRecord::getSalesOrderNo, kw)
             );
         }
 
@@ -790,8 +1026,47 @@ public class InventoryServiceImpl implements InventoryService {
 
         Page<OutboundRecord> page = new Page<>(pageQuery.getPage(), pageQuery.getSize());
         Page<OutboundRecord> result = outboundRecordMapper.selectPage(page, queryWrapper);
+        enrichOutboundProductFields(result.getRecords());
 
         return PageResult.build(result.getTotal(), pageQuery.getPage(), pageQuery.getSize(), result.getRecords());
+    }
+
+    /**
+     * 出库流水列表：按 productId 批量补商品主图与分类名。
+     */
+    private void enrichOutboundProductFields(List<OutboundRecord> records) {
+        if (records == null || records.isEmpty()) {
+            return;
+        }
+        Set<Long> productIds = new HashSet<>();
+        for (OutboundRecord record : records) {
+            if (record != null && record.getProductId() != null) {
+                productIds.add(record.getProductId());
+            }
+        }
+        if (productIds.isEmpty()) {
+            return;
+        }
+        LambdaQueryWrapper<Product> productQuery = new LambdaQueryWrapper<>();
+        productQuery.in(Product::getId, productIds);
+        productQuery.eq(Product::getDeleted, 0);
+        List<Product> products = productMapper.selectList(productQuery);
+        Map<Long, Product> productMap = new HashMap<>();
+        for (Product product : products) {
+            if (product != null && product.getId() != null) {
+                productMap.put(product.getId(), product);
+            }
+        }
+        for (OutboundRecord record : records) {
+            if (record == null || record.getProductId() == null) {
+                continue;
+            }
+            Product product = productMap.get(record.getProductId());
+            if (product != null) {
+                record.setProductImage(product.getImage());
+                record.setCategory(product.getCategoryName());
+            }
+        }
     }
 
     @Override
@@ -811,7 +1086,7 @@ public class InventoryServiceImpl implements InventoryService {
     @Override
     public PageResult<Inventory> searchByImage(InventoryImageSearchRequest req) {
         long page = req.getPage() != null && req.getPage() >= 1 ? req.getPage() : 1;
-        long size = req.getSize() != null && req.getSize() >= 1 ? Math.min(req.getSize(), 100) : 10;
+        long size = req.getSize() != null && req.getSize() >= 1 ? Math.min(req.getSize(), IMAGE_SEARCH_MAX_ROWS) : 10;
 
         String qPayload;
         try {
@@ -910,12 +1185,45 @@ public class InventoryServiceImpl implements InventoryService {
         }
     }
 
+    private void applyTransferCreateTimeRange(LambdaQueryWrapper<InventoryTransfer> q, String start, String end) {
+        LocalDateTime t0 = parseQueryDayStart(start);
+        LocalDateTime t1 = parseQueryDayEnd(end);
+        if (t0 != null) {
+            q.ge(InventoryTransfer::getCreateTime, t0);
+        }
+        if (t1 != null) {
+            q.le(InventoryTransfer::getCreateTime, t1);
+        }
+    }
+
+    private static LocalDateTime parseQueryDayStart(String day) {
+        if (!StringUtils.hasText(day)) {
+            return null;
+        }
+        try {
+            return LocalDate.parse(day.trim(), ISO_DATE).atStartOfDay();
+        } catch (Exception ignored) {
+            return null;
+        }
+    }
+
+    private static LocalDateTime parseQueryDayEnd(String day) {
+        if (!StringUtils.hasText(day)) {
+            return null;
+        }
+        try {
+            return LocalDateTime.of(LocalDate.parse(day.trim(), ISO_DATE), LocalTime.of(23, 59, 59));
+        } catch (Exception ignored) {
+            return null;
+        }
+    }
+
     private boolean matchesStagnantFilter(Inventory i, String stagnantStatus) {
         if (!StringUtils.hasText(stagnantStatus)) {
             return true;
         }
         long sd = computeStagnantDays(i);
-        int warning = i.getStagnantDays() != null ? i.getStagnantDays() : 90;
+        int warning = i.getStagnantDays() != null ? i.getStagnantDays() : resolveDefaultStagnantThreshold();
         if ("stagnant".equalsIgnoreCase(stagnantStatus)) {
             return sd >= warning;
         }
@@ -931,6 +1239,8 @@ public class InventoryServiceImpl implements InventoryService {
             ref = i.getLastOutboundTime();
         } else if (i.getLastInboundTime() != null) {
             ref = i.getLastInboundTime();
+        } else if (i.getCreateTime() != null) {
+            ref = i.getCreateTime();
         }
         if (ref == null) {
             return 0L;

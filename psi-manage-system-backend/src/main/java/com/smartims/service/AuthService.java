@@ -29,6 +29,11 @@ public interface AuthService {
     void logout();
 
     /**
+     * 刷新当前登录用户的 JWT
+     */
+    String refreshToken();
+
+    /**
      * 当前登录用户修改密码（需校验原密码）
      */
     void changePassword(ChangePasswordDTO dto);

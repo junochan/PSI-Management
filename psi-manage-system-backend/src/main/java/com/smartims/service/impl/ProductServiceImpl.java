@@ -223,7 +223,7 @@ public class ProductServiceImpl implements ProductService {
     @Override
     public PageResult<Product> searchByImage(ProductImageSearchRequest req) {
         long page = req.getPage() != null && req.getPage() >= 1 ? req.getPage() : 1;
-        long size = req.getSize() != null && req.getSize() >= 1 ? Math.min(req.getSize(), 100) : 10;
+        long size = req.getSize() != null && req.getSize() >= 1 ? Math.min(req.getSize(), IMAGE_SEARCH_MAX_ROWS) : 10;
 
         String qPayload;
         try {
@@ -471,7 +471,7 @@ public class ProductServiceImpl implements ProductService {
         existing.setCategoryName(dto.getCategoryName() != null ? dto.getCategoryName() : existing.getCategoryName());
         existing.setCostPrice(dto.getCostPrice() != null ? dto.getCostPrice() : existing.getCostPrice());
         existing.setSalePrice(dto.getSalePrice() != null ? dto.getSalePrice() : existing.getSalePrice());
-        existing.setStatus(existing.getStatus());
+        existing.setStatus(dto.getStatus() != null ? dto.getStatus() : existing.getStatus());
         existing.setImage(dto.getImage());
         existing.setDescription(dto.getDescription());
         // 注意：编辑商品时不允许修改库存，库存只能通过入库/出库操作变更

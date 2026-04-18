@@ -6,6 +6,7 @@ import jakarta.validation.constraints.Size;
 import lombok.Data;
 
 import java.io.Serializable;
+import java.time.LocalDate;
 
 /**
  * 发货DTO
@@ -45,6 +46,11 @@ public class ShippingDTO implements Serializable {
     @Size(max = 200, message = "收货地址长度不能超过200")
     private String receiverAddress;
 
+    /** 预计到达日期（前端 estimatedDate） */
+    private LocalDate estimatedDate;
+
+    /** 发货备注（与 sales_order.remark varchar(500) 一致） */
+    @Size(max = 500, message = "发货备注长度不能超过500")
     private String remark;
 
 }

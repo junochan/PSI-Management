@@ -49,6 +49,13 @@ public class PageQuery implements Serializable {
 
     private Long productId;
     private Long warehouseId;
+
+    /**
+     * 出入库流水等接口：按库存行筛选时传入，服务端会解析为该行的 {@code productId} + {@code warehouseId} 再分页；
+     * 与直接传 {@code productId}/{@code warehouseId} 二选一或同传时以本字段为准。
+     */
+    private Long inventoryId;
+
     private Long customerId;
     private Long supplierId;
 
@@ -88,8 +95,11 @@ public class PageQuery implements Serializable {
     private String createTimeStart;
     private String createTimeEnd;
 
-    /** 入库记录：操作人精确匹配 */
+    /** 入库/出库流水：操作人模糊匹配 */
     private String operatorName;
+
+    /** 调拨记录：状态 pending / completed / cancelled */
+    private String transferStatus;
 
     /**
      * 获取起始位置

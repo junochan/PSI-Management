@@ -12,6 +12,7 @@ import com.smartims.mapper.*;
 import com.smartims.security.UserContext;
 import com.smartims.service.SalesService;
 import com.smartims.util.CodeGenerator;
+import com.smartims.util.InventoryStatusUtil;
 import com.smartims.util.StatusNameResolver;
 import com.smartims.vo.SalesStatsVO;
 import lombok.RequiredArgsConstructor;
@@ -73,6 +74,7 @@ public class SalesServiceImpl implements SalesService {
 
         Page<SalesOrder> page = new Page<>(pageQuery.getPage(), pageQuery.getSize());
         Page<SalesOrder> result = salesOrderMapper.selectPage(page, queryWrapper);
+        enrichSalesOrderProductImages(result.getRecords());
 
         Map<String, Object> summary = aggregateSalesFinancials(pageQuery);
         return PageResult.build(result.getTotal(), result.getCurrent(), result.getSize(), result.getRecords(), summary);
@@ -166,7 +168,51 @@ public class SalesServiceImpl implements SalesService {
         if (order == null || order.getDeleted() == 1) {
             throw new BusinessException("销售订单不存在");
         }
+        enrichSalesOrderProductImages(List.of(order));
         return order;
+    }
+
+    private void enrichSalesOrderProductImages(List<SalesOrder> orders) {
+        if (orders == null || orders.isEmpty()) {
+            return;
+        }
+        Map<Long, String> imageMap = queryProductImageMap(orders.stream()
+                .map(SalesOrder::getProductId)
+                .toList());
+        for (SalesOrder order : orders) {
+            if (order == null || order.getProductId() == null) {
+                continue;
+            }
+            order.setProductImage(imageMap.get(order.getProductId()));
+        }
+    }
+
+    private Map<Long, String> queryProductImageMap(List<Long> productIds) {
+        Set<Long> validProductIds = new HashSet<>();
+        if (productIds != null) {
+            for (Long productId : productIds) {
+                if (productId != null) {
+                    validProductIds.add(productId);
+                }
+            }
+        }
+        if (validProductIds.isEmpty()) {
+            return new HashMap<>();
+        }
+
+        LambdaQueryWrapper<Product> productQuery = new LambdaQueryWrapper<>();
+        productQuery.select(Product::getId, Product::getImage);
+        productQuery.in(Product::getId, validProductIds);
+        productQuery.eq(Product::getDeleted, 0);
+        List<Product> products = productMapper.selectList(productQuery);
+
+        Map<Long, String> imageMap = new HashMap<>();
+        for (Product product : products) {
+            if (product != null && product.getId() != null) {
+                imageMap.put(product.getId(), product.getImage());
+            }
+        }
+        return imageMap;
     }
 
     @Override
@@ -423,6 +469,7 @@ public class SalesServiceImpl implements SalesService {
         // 更新库存
         inventory.setStock(inventory.getStock() - shipQuantity);
         inventory.setLastOutboundTime(LocalDateTime.now());
+        InventoryStatusUtil.applyStatus(inventory);
         inventoryMapper.updateById(inventory);
 
         // 更新订单发货信息
@@ -439,6 +486,9 @@ public class SalesServiceImpl implements SalesService {
         order.setReceiverName(dto.getReceiverName().trim());
         order.setReceiverPhone(dto.getReceiverPhone().trim());
         order.setReceiverAddress(dto.getReceiverAddress().trim());
+        if (dto.getEstimatedDate() != null) {
+            order.setExpectArriveDate(dto.getEstimatedDate());
+        }
         if (dto.getRemark() != null) {
             order.setRemark(dto.getRemark());
         }

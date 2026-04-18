@@ -83,7 +83,7 @@ psims categories create -d "{\"name\":\"数码\"}"
 |------|----------|------------|-----------|----------|
 | `GET /products` | 无 | `page`,`size`,`sort`,`order`,`keyword`,`productId`,`warehouseId`,`customerId`,`supplierId`,`categoryName`,`productStatus`,`stagnantStatus`,`inboundStatus`,`payStatus`,`salesOrderStatus`,`aftersalesStatus`,`lastOutboundStart`,`lastOutboundEnd`,`lastInboundStart`,`lastInboundEnd`,`expectDateStart`,`expectDateEnd`,`createTimeStart`,`createTimeEnd`,`operatorName`（均可选） | 无 | 无 |
 | `GET /products/{id}` | `id`(必填) | 无 | 无 | 无 |
-| `POST /products` | 无 | 无 | `code`(可选),`name`(必填),`brand`(可选),`spec`(可选),`categoryId`(可选),`categoryName`(可选),`costPrice`(必填),`salePrice`(必填),`status`(可选),`image`(可选),`description`(可选),`safeStock`(可选),`initialStock`(可选),`warehouseId`(可选) | 无 |
+| `POST /products` | 无 | 无 | `code`(可选),`name`(必填),`brand`(可选),`spec`(可选),`categoryId`(可选),`categoryName`(可选),`costPrice`(必填),`salePrice`(必填),`status`(可选),`image`(可选，商品图片地址如果有需要先调图片上传接口),`description`(可选),`safeStock`(可选),`initialStock`(可选),`warehouseId`(可选) | 无 |
 | `PUT /products/{id}` | `id`(必填) | 无 | 同 `POST /products` 字段 | 无 |
 | `DELETE /products/{id}` | `id`(必填) | 无 | 无 | 无 |
 | `DELETE /products/batch` | 无 | 无 | `ids`(必填, `number[]`) | 无 |

@@ -29,6 +29,12 @@ public class Inventory implements Serializable {
 
     private String productName;
 
+    @TableField(exist = false)
+    private String productImage;
+
+    @TableField(exist = false)
+    private String productStatus;
+
     private String spec;
 
     private String category;
@@ -36,6 +42,12 @@ public class Inventory implements Serializable {
     private Long warehouseId;
 
     private String warehouseName;
+
+    @TableField(exist = false)
+    private String warehouseCode;
+
+    @TableField(exist = false)
+    private Integer warehouseStatus;
 
     private String location;
 

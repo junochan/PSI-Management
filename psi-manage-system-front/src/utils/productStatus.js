@@ -14,6 +14,10 @@ export function isProductSelectableForOrder(product) {
  * 库存行 + 商品主数据列表：是否允许「创建采购」快捷入口（无主数据时不拦截，避免误伤）。
  */
 export function canShortcutPurchaseForStock(stockRow, productList) {
+  // 库存接口已回填 productStatus 时，以库存行为准，避免再依赖商品列表兜底
+  if (stockRow?.productStatus != null && String(stockRow.productStatus).trim() !== '') {
+    return isProductSelectableForOrder({ status: stockRow.productStatus })
+  }
   if (!stockRow?.productId || !Array.isArray(productList)) return true
   const p = productList.find(x => x.id === stockRow.productId)
   if (!p) return true

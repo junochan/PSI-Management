@@ -12,36 +12,56 @@
     <el-tabs v-model="activeTab" class="page-tabs">
       <!-- 采购订单 -->
       <el-tab-pane label="采购订单" name="orders">
-        <el-card>
+        <el-card v-loading="purchaseOrdersTabLoading" element-loading-text="加载中...">
           <template #header>
             <div class="card-header">
-              <div class="header-actions">
-                <el-select v-model="filterSupplier" placeholder="按供应商筛选" clearable filterable style="width: 160px">
-                  <el-option v-for="s in suppliersList" :key="s.id" :label="s.name" :value="s.id" />
+              <div class="header-actions page-filter-bar">
+                <el-select
+                  v-model="filterSupplier"
+                  v-load-more="{ popperClass: 'purchase-filter-supplier-dropdown', onLoadMore: loadMoreSupplierOptions, disabled: supplierOptionsLoading || !supplierOptionsHasMore }"
+                  popper-class="purchase-filter-supplier-dropdown"
+                  class="page-filter-ctl page-filter-ctl--wide"
+                  placeholder="按供应商筛选"
+                  clearable
+                  filterable
+                  @visible-change="onSupplierSelectVisibleChange"
+                  @filter-method="onSupplierFilter"
+                >
+                  <el-option v-for="s in supplierOptions" :key="s.id" :label="s.name" :value="s.id" />
                 </el-select>
-                <el-select v-model="filterProduct" placeholder="按商品筛选" clearable filterable style="width: 160px">
-                  <el-option v-for="p in productList" :key="p.id" :label="p.name" :value="p.id" />
+                <el-select
+                  v-model="filterProduct"
+                  v-load-more="{ popperClass: 'purchase-filter-product-dropdown', onLoadMore: loadMoreProductOptions, disabled: productOptionsLoading || !productOptionsHasMore }"
+                  popper-class="purchase-filter-product-dropdown"
+                  class="page-filter-ctl page-filter-ctl--wide"
+                  placeholder="按商品筛选"
+                  clearable
+                  filterable
+                  @visible-change="onProductSelectVisibleChange"
+                  @filter-method="onProductFilter"
+                >
+                  <el-option v-for="p in productOptions" :key="p.id" :label="p.name" :value="p.id" />
                 </el-select>
-                <el-select v-model="filterInboundStatus" placeholder="按入库状态筛选" clearable filterable style="width: 120px">
+                <el-select v-model="filterInboundStatus" class="page-filter-ctl page-filter-ctl--narrow" placeholder="按入库状态筛选" clearable filterable>
                   <el-option label="待入库" value="pending" />
                   <el-option label="部分入库" value="partial" />
                   <el-option label="已完成" value="completed" />
                 </el-select>
-                <el-select v-model="filterPayStatus" placeholder="按付款状态筛选" clearable filterable style="width: 120px">
+                <el-select v-model="filterPayStatus" class="page-filter-ctl page-filter-ctl--narrow" placeholder="按付款状态筛选" clearable filterable>
                   <el-option label="待付款" value="unpaid" />
                   <el-option label="已付款" value="paid" />
                 </el-select>
                 <el-date-picker
                   v-model="filterExpectDateRange"
+                  class="page-filter-ctl page-filter-ctl--daterange"
                   type="daterange"
                   range-separator="至"
                   start-placeholder="期望交货开始"
                   end-placeholder="期望交货结束"
-                  style="width: 200px"
                   value-format="YYYY-MM-DD"
                 />
-                <el-input v-model="searchKeyword" placeholder="搜索采购单号、供应商..." prefix-icon="Search" clearable style="width: 180px" />
-                <el-button v-if="canAddPurchase" type="primary" @click="openPurchaseDialog">
+                <el-input v-model="searchKeyword" class="page-filter-ctl page-filter-ctl--search" placeholder="搜索采购单号、供应商..." prefix-icon="Search" clearable />
+                <el-button v-if="canAddPurchase" class="page-filter-primary" type="primary" @click="openPurchaseDialog">
                   <el-icon><Plus /></el-icon>
                   新建采购单
                 </el-button>
@@ -85,7 +105,15 @@
             <el-table-column label="商品" min-width="150" show-overflow-tooltip>
               <template #default="{ row }">
                 <div class="product-cell-mini">
-                  <img v-if="getProductImage(row.productId)" :src="getProductImage(row.productId)" class="product-thumb-mini" />
+                  <ProductImageThumb
+                    v-if="getRowProductImage(row)"
+                    :src="getRowProductImage(row)"
+                    :preview-src-list="getRowProductPreviewList(row)"
+                    class="product-thumb-mini"
+                    :width="32"
+                    :height="32"
+                    :radius="4"
+                  />
                   <span v-else class="product-icon-mini">{{ getProductIcon(getProductName(row.productId, row.productName || row.product)) }}</span>
                   <span class="product-name-mini">{{ getProductName(row.productId, row.productName || row.product) }}</span>
                 </div>
@@ -121,13 +149,13 @@
                 <el-tag :type="getPayStatusType(row.payStatus)" effect="light" size="small">{{ formatPayStatus(row.payStatus) }}</el-tag>
               </template>
             </el-table-column>
-            <el-table-column label="期望交货" min-width="110" show-overflow-tooltip>
+            <el-table-column label="期望交货" min-width="110">
               <template #default="{ row }">
-                <span :class="{ 'overdue': isExpectDateOverdue(row.expectDate) && row.inboundStatus !== 'completed' }">{{ formatExpectDate(row.expectDate) }}</span>
+                <span :class="{ 'overdue': isExpectDateOverdue(resolveExpectDate(row)) && row.inboundStatus !== 'completed' }">{{ formatExpectDate(resolveExpectDate(row)) }}</span>
               </template>
             </el-table-column>
-            <el-table-column label="下单时间" prop="createTime" width="176" show-overflow-tooltip />
-            <el-table-column label="操作" width="140" fixed="right" align="center">
+            <el-table-column label="下单时间" prop="createTime" width="176" />
+            <el-table-column label="操作" width="200" align="center">
               <template #default="{ row }">
                 <el-button v-if="canViewPurchase" type="primary" link size="small" @click="viewPurchaseOrder(row)">详情</el-button>
                 <el-button
@@ -161,26 +189,36 @@
 
       <!-- 入库记录 -->
       <el-tab-pane label="入库记录" name="inbound">
-        <el-card>
+        <el-card v-loading="purchaseInboundTabLoading" element-loading-text="加载中...">
           <template #header>
             <div class="card-header">
-              <div class="header-actions">
+              <div class="header-actions page-filter-bar">
                 <el-date-picker
                   v-model="filterInboundTimeRange"
+                  class="page-filter-ctl page-filter-ctl--daterange"
                   type="daterange"
                   range-separator="至"
                   start-placeholder="入库开始"
                   end-placeholder="入库结束"
-                  style="width: 200px"
                   value-format="YYYY-MM-DD"
                 />
-                <el-select v-model="filterInboundOperator" placeholder="按操作人筛选" clearable filterable style="width: 120px">
+                <el-select v-model="filterInboundOperator" class="page-filter-ctl page-filter-ctl--narrow" placeholder="按操作人筛选" clearable filterable>
                   <el-option v-for="u in inboundOperators" :key="u" :label="u" :value="u" />
                 </el-select>
-                <el-select v-model="filterInboundWarehouse" placeholder="按仓库筛选" clearable filterable style="width: 120px">
-                  <el-option v-for="w in warehousesList" :key="w.id" :label="w.name" :value="w.id" />
+                <el-select
+                  v-model="filterInboundWarehouse"
+                  v-load-more="{ popperClass: 'purchase-inbound-warehouse-dropdown', onLoadMore: loadMoreInboundWarehouseOptions, disabled: inboundWarehouseOptionsLoading || !inboundWarehouseOptionsHasMore }"
+                  popper-class="purchase-inbound-warehouse-dropdown"
+                  class="page-filter-ctl page-filter-ctl--narrow"
+                  placeholder="按仓库筛选"
+                  clearable
+                  filterable
+                  @visible-change="onInboundWarehouseVisibleChange"
+                  @filter-method="onInboundWarehouseFilter"
+                >
+                  <el-option v-for="w in inboundWarehouseOptions" :key="w.id" :label="w.name" :value="w.id" />
                 </el-select>
-                <el-input v-model="inboundSearchKeyword" placeholder="搜索入库单号、采购单号..." prefix-icon="Search" clearable style="width: 180px" />
+                <el-input v-model="inboundSearchKeyword" class="page-filter-ctl page-filter-ctl--search" placeholder="搜索入库单号、采购单号..." prefix-icon="Search" clearable />
               </div>
             </div>
           </template>
@@ -201,7 +239,15 @@
             <el-table-column label="商品" min-width="150" show-overflow-tooltip>
               <template #default="{ row }">
                 <div class="product-cell-mini">
-                  <img v-if="getProductImage(row.productId)" :src="getProductImage(row.productId)" class="product-thumb-mini" />
+                  <ProductImageThumb
+                    v-if="getRowProductImage(row)"
+                    :src="getRowProductImage(row)"
+                    :preview-src-list="getRowProductPreviewList(row)"
+                    class="product-thumb-mini"
+                    :width="32"
+                    :height="32"
+                    :radius="4"
+                  />
                   <span v-else class="product-icon-mini">{{ getProductIcon(getProductName(row.productId, row.productName || row.product)) }}</span>
                   <span class="product-name-mini">{{ getProductName(row.productId, row.productName || row.product) }}</span>
                 </div>
@@ -237,6 +283,7 @@
 
       <!-- 供应商管理：仅 purchase:supplier（勿用 purchase:add/edit 或父级菜单码代替） -->
       <el-tab-pane v-if="canPurchaseSuppliersTab" label="供应商管理" name="suppliers">
+        <div class="suppliers-tab-wrap" v-loading="purchaseSuppliersTabLoading" element-loading-text="加载中...">
         <div class="supplier-search-bar">
           <el-input
             v-model="supplierSearchKeyword"
@@ -250,9 +297,9 @@
             添加供应商
           </el-button>
         </div>
-        <el-empty v-if="!filteredSuppliersListWithStats.length" class="grid-empty" description="暂无数据" :image-size="80" />
-        <div v-else class="suppliers-grid">
-          <el-card class="supplier-card" v-for="s in filteredSuppliersListWithStats" :key="s.id">
+        <el-empty v-if="!purchaseSuppliersTabLoading && !filteredSuppliersList.length" class="grid-empty" description="暂无数据" :image-size="80" />
+        <div v-if="filteredSuppliersList.length" class="suppliers-grid">
+          <el-card class="supplier-card" v-for="s in filteredSuppliersList" :key="s.id">
             <div class="supplier-header">
               <div class="supplier-avatar">🏭</div>
               <div class="supplier-info">
@@ -264,11 +311,11 @@
             <div class="supplier-stats">
               <div class="supplier-stat">
                 <span class="stat-label">合作订单</span>
-                <span class="stat-value">{{ s.orders }}</span>
+                <span class="stat-value">{{ s.purchaseOrderCount ?? 0 }}</span>
               </div>
               <div class="supplier-stat">
                 <span class="stat-label">总采购额</span>
-                <span class="stat-value">¥{{ formatAmountDisplay(s.amount ?? 0) }}</span>
+                <span class="stat-value">¥{{ formatAmountDisplay(s.totalPurchaseAmount ?? 0) }}</span>
               </div>
             </div>
             <div class="supplier-contact">
@@ -278,7 +325,7 @@
               </div>
               <div class="contact-item">
                 <el-icon><Message /></el-icon>
-                <span>{{ s.email }}</span>
+                <span>{{ formatSupplierEmailDisplay(s.email) }}</span>
               </div>
             </div>
             <div class="supplier-actions">
@@ -287,6 +334,7 @@
               <el-button v-if="canEditSupplierEntity" type="danger" plain @click="deleteSupplier(s)">删除</el-button>
             </div>
           </el-card>
+        </div>
         </div>
       </el-tab-pane>
     </el-tabs>
@@ -297,8 +345,17 @@
         <el-row :gutter="20">
           <el-col :span="12">
             <el-form-item label="供应商" prop="supplierId">
-              <el-select v-model="purchaseForm.supplierId" placeholder="请选择供应商" style="width: 100%" filterable>
-                <el-option v-for="s in suppliersList" :key="s.id" :label="s.name" :value="s.id" />
+              <el-select
+                v-model="purchaseForm.supplierId"
+                v-load-more="{ popperClass: 'purchase-dialog-supplier-dropdown', onLoadMore: loadMoreSupplierOptions, disabled: supplierOptionsLoading || !supplierOptionsHasMore }"
+                popper-class="purchase-dialog-supplier-dropdown"
+                placeholder="请选择供应商"
+                style="width: 100%"
+                filterable
+                @visible-change="onSupplierSelectVisibleChange"
+                @filter-method="onSupplierFilter"
+              >
+                <el-option v-for="s in supplierOptions" :key="s.id" :label="s.name" :value="s.id" />
               </el-select>
             </el-form-item>
           </el-col>
@@ -313,13 +370,17 @@
             <el-form-item label="商品选择" prop="productId">
               <el-select
                 v-model="purchaseForm.productId"
+                v-load-more="{ popperClass: 'purchase-dialog-product-dropdown', onLoadMore: loadMoreProductOptions, disabled: productOptionsLoading || !productOptionsHasMore }"
+                popper-class="purchase-dialog-product-dropdown"
                 placeholder="请选择商品"
                 style="width: 100%"
                 filterable
                 @change="onProductChange"
+                @visible-change="onProductSelectVisibleChange"
+                @filter-method="onProductFilter"
               >
                 <el-option
-                  v-for="p in productListForNewOrder"
+                  v-for="p in selectableProductOptions"
                   :key="p.id"
                   :label="p.name"
                   :value="p.id"
@@ -330,7 +391,15 @@
           <el-col :span="12">
             <el-form-item label="商品图片">
               <div class="selected-product-image">
-                <img v-if="selectedProductImage" :src="selectedProductImage" class="product-preview" />
+                <ProductImageThumb
+                  v-if="selectedProductImage"
+                  :src="selectedProductImage"
+                  :preview-src-list="selectedProductPreviewList"
+                  class="product-preview"
+                  :width="80"
+                  :height="80"
+                  :radius="8"
+                />
                 <div v-else class="product-preview-placeholder">
                   <span class="placeholder-icon">📦</span>
                   <span class="placeholder-text">请先选择商品</span>
@@ -387,8 +456,15 @@
             </el-form-item>
           </el-col>
         </el-row>
-        <el-form-item label="备注">
-          <el-input v-model="purchaseForm.remark" placeholder="输入采购备注" />
+        <el-form-item label="备注" prop="remark">
+          <el-input
+            v-model="purchaseForm.remark"
+            type="textarea"
+            :rows="3"
+            :maxlength="PURCHASE_REMARK_MAX_LENGTH"
+            show-word-limit
+            placeholder="输入采购备注"
+          />
         </el-form-item>
       </el-form>
       <template #footer>
@@ -447,37 +523,10 @@
       </el-form>
       <template #footer>
         <el-button @click="supplierDialogVisible = false">取消</el-button>
-        <el-button type="primary" @click="submitSupplier">确认添加</el-button>
+        <el-button type="primary" @click="submitSupplier">{{ supplierForm.id ? '保存修改' : '确认添加' }}</el-button>
       </template>
     </el-dialog>
 
-    <!-- 订单详情对话框 -->
-    <el-dialog v-model="orderDetailVisible" title="采购单详情" width="500px">
-      <el-descriptions :column="2" border>
-        <el-descriptions-item label="采购单号">{{ currentOrder?.orderNo }}</el-descriptions-item>
-        <el-descriptions-item label="供应商">{{ getSupplierDisplayName(currentOrder) }}</el-descriptions-item>
-        <el-descriptions-item label="商品">
-          <div class="product-cell">
-            <img v-if="getProductImage(currentOrder?.productId)" :src="getProductImage(currentOrder?.productId)" class="product-thumb" />
-            <span v-else class="product-icon">{{ getProductIcon(getProductName(currentOrder?.productId, currentOrder?.productName || currentOrder?.product)) }}</span>
-            <span class="product-name">{{ getProductName(currentOrder?.productId, currentOrder?.productName || currentOrder?.product) }}</span>
-          </div>
-        </el-descriptions-item>
-        <el-descriptions-item label="数量">{{ currentOrder?.totalQuantity || currentOrder?.quantity }}</el-descriptions-item>
-        <el-descriptions-item label="金额">¥{{ formatAmountDisplay(currentOrder?.amount ?? 0) }}</el-descriptions-item>
-        <el-descriptions-item label="入库状态">
-          <el-tag :type="getInboundStatusType(currentOrder?.inboundStatus)">{{ formatInboundStatus(currentOrder?.inboundStatus) }}</el-tag>
-        </el-descriptions-item>
-        <el-descriptions-item label="付款状态">
-          <el-tag :type="getPayStatusType(currentOrder?.payStatus)">{{ formatPayStatus(currentOrder?.payStatus) }}</el-tag>
-        </el-descriptions-item>
-        <el-descriptions-item label="创建时间">{{ currentOrder?.createTime }}</el-descriptions-item>
-      </el-descriptions>
-      <template #footer>
-        <el-button @click="orderDetailVisible = false">关闭</el-button>
-        <el-button type="primary" @click="printPurchaseOrder">打印采购单</el-button>
-      </template>
-    </el-dialog>
   </div>
 </template>
 
@@ -488,7 +537,8 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import { useDataStore } from '@/stores/data'
 import { useUserStore } from '@/stores/user'
 import { productApi, purchaseApi, supplierApi, warehouseApi } from '@/api'
-import { firstProductImageUrl } from '@/utils/productImages'
+import ProductImageThumb from '@/components/ProductImageThumb.vue'
+import { firstProductImageUrl, parseProductImageUrls, productRowPreviewUrls } from '@/utils/productImages'
 import { formatAmountDisplay } from '@/utils/moneyFormat'
 import { isProductSelectableForOrder } from '@/utils/productStatus'
 
@@ -549,12 +599,17 @@ const inboundSearchKeyword = ref('')
 const supplierSearchKeyword = ref('')
 const purchaseDialogVisible = ref(false)
 const supplierDialogVisible = ref(false)
-const orderDetailVisible = ref(false)
 const purchaseFormRef = ref()
 const supplierFormRef = ref()
-const currentOrder = ref(null)
 const submitting = ref(false)
 const loading = ref(false)
+const purchaseOrdersTabLoading = computed(() => activeTab.value === 'orders' && loading.value)
+const purchaseInboundTabLoading = computed(() => activeTab.value === 'inbound' && loading.value)
+const purchaseSuppliersTabLoading = computed(
+  () =>
+    activeTab.value === 'suppliers' &&
+    (loading.value || dataStore.suppliersLoading || dataStore.supplierIndustriesLoading)
+)
 
 // 统计数据
 const purchaseStats = ref({
@@ -567,16 +622,200 @@ const purchaseStats = ref({
 
 // 数据从后端获取
 const productList = computed(() => dataStore.products || [])
-/** 新建采购单商品下拉：排除停售（列表筛选仍用全部商品） */
-const productListForNewOrder = computed(() => productList.value.filter(isProductSelectableForOrder))
 const suppliersList = computed(() => dataStore.suppliers || [])
 const supplierIndustriesList = computed(() => dataStore.supplierIndustries || [])
 const warehousesList = computed(() => dataStore.warehouses || [])
 
-// 动态获取仓库名称 - 从仓库列表中根据warehouseId查找
+/** 筛选区与新建弹窗：供应商 / 商品 / 仓库下拉与库存页一致，首屏各 10 条，触底继续分页 */
+const FILTER_DROPDOWN_PAGE_SIZE = 10
+const inboundWarehouseOptions = ref([])
+const inboundWarehouseOptionsPage = ref(0)
+const inboundWarehouseOptionsTotal = ref(0)
+const inboundWarehouseKeyword = ref('')
+const inboundWarehouseOptionsLoading = ref(false)
+const inboundWarehouseOptionsHasMore = computed(
+  () => inboundWarehouseOptions.value.length < inboundWarehouseOptionsTotal.value
+)
+const PURCHASE_REMARK_MAX_LENGTH = 500
+const supplierOptions = ref([])
+const supplierOptionsPage = ref(0)
+const supplierOptionsTotal = ref(0)
+const supplierOptionsKeyword = ref('')
+const supplierOptionsLoading = ref(false)
+const supplierOptionsHasMore = computed(() => supplierOptions.value.length < supplierOptionsTotal.value)
+
+const productOptions = ref([])
+const productOptionsPage = ref(0)
+const productOptionsTotal = ref(0)
+const productOptionsKeyword = ref('')
+const productOptionsLoading = ref(false)
+const productOptionsHasMore = computed(() => productOptions.value.length < productOptionsTotal.value)
+
+const mergeOptionsById = (base, extra) => {
+  const map = new Map()
+  ;(base || []).forEach((item) => {
+    if (item?.id != null) map.set(item.id, item)
+  })
+  ;(extra || []).forEach((item) => {
+    if (item?.id != null) map.set(item.id, item)
+  })
+  return Array.from(map.values())
+}
+
+const loadMoreSupplierOptions = async ({ reset = false, keyword = null } = {}) => {
+  if (supplierOptionsLoading.value) return
+  if (reset) {
+    supplierOptions.value = []
+    supplierOptionsPage.value = 0
+    supplierOptionsTotal.value = 0
+    supplierOptionsKeyword.value = keyword ?? ''
+  } else if (!supplierOptionsHasMore.value && supplierOptionsPage.value > 0) {
+    return
+  }
+  supplierOptionsLoading.value = true
+  try {
+    const nextPage = supplierOptionsPage.value + 1
+    const res = await supplierApi.list({
+      page: nextPage,
+      size: FILTER_DROPDOWN_PAGE_SIZE,
+      keyword: supplierOptionsKeyword.value || undefined
+    })
+    const rows = res?.list || []
+    supplierOptions.value = mergeOptionsById(supplierOptions.value, rows)
+    supplierOptionsPage.value = nextPage
+    supplierOptionsTotal.value = Number(res?.total) || supplierOptions.value.length
+    if (rows.length < FILTER_DROPDOWN_PAGE_SIZE) {
+      supplierOptionsTotal.value = supplierOptions.value.length
+    }
+  } finally {
+    supplierOptionsLoading.value = false
+  }
+}
+
+const loadMoreProductOptions = async ({ reset = false, keyword = null } = {}) => {
+  if (productOptionsLoading.value) return
+  if (reset) {
+    productOptions.value = []
+    productOptionsPage.value = 0
+    productOptionsTotal.value = 0
+    productOptionsKeyword.value = keyword ?? ''
+  } else if (!productOptionsHasMore.value && productOptionsPage.value > 0) {
+    return
+  }
+  productOptionsLoading.value = true
+  try {
+    const nextPage = productOptionsPage.value + 1
+    const res = await productApi.list({
+      page: nextPage,
+      size: FILTER_DROPDOWN_PAGE_SIZE,
+      keyword: productOptionsKeyword.value || undefined
+    })
+    const rows = res?.list || []
+    productOptions.value = mergeOptionsById(productOptions.value, rows)
+    productOptionsPage.value = nextPage
+    productOptionsTotal.value = Number(res?.total) || productOptions.value.length
+    if (rows.length < FILTER_DROPDOWN_PAGE_SIZE) {
+      productOptionsTotal.value = productOptions.value.length
+    }
+  } finally {
+    productOptionsLoading.value = false
+  }
+}
+
+const onSupplierSelectVisibleChange = (visible) => {
+  if (visible && supplierOptions.value.length === 0) {
+    loadMoreSupplierOptions({ reset: true, keyword: '' })
+  }
+}
+
+const onProductSelectVisibleChange = (visible) => {
+  if (visible && productOptions.value.length === 0) {
+    loadMoreProductOptions({ reset: true, keyword: '' })
+  }
+}
+
+const onSupplierFilter = (keyword) => {
+  loadMoreSupplierOptions({ reset: true, keyword: keyword || '' })
+}
+
+const onProductFilter = (keyword) => {
+  loadMoreProductOptions({ reset: true, keyword: keyword || '' })
+}
+
+const loadMoreInboundWarehouseOptions = async ({ reset = false, keyword = null } = {}) => {
+  if (inboundWarehouseOptionsLoading.value) return
+  if (reset) {
+    inboundWarehouseOptions.value = []
+    inboundWarehouseOptionsPage.value = 0
+    inboundWarehouseOptionsTotal.value = 0
+    inboundWarehouseKeyword.value = keyword ?? ''
+  } else if (!inboundWarehouseOptionsHasMore.value && inboundWarehouseOptionsPage.value > 0) {
+    return
+  }
+  inboundWarehouseOptionsLoading.value = true
+  try {
+    const nextPage = inboundWarehouseOptionsPage.value + 1
+    const res = await warehouseApi.list({
+      page: nextPage,
+      size: FILTER_DROPDOWN_PAGE_SIZE,
+      keyword: inboundWarehouseKeyword.value || undefined
+    })
+    const rows = res?.list || []
+    inboundWarehouseOptions.value = mergeOptionsById(inboundWarehouseOptions.value, rows)
+    inboundWarehouseOptionsPage.value = nextPage
+    inboundWarehouseOptionsTotal.value = Number(res?.total) || inboundWarehouseOptions.value.length
+    if (rows.length < FILTER_DROPDOWN_PAGE_SIZE) {
+      inboundWarehouseOptionsTotal.value = inboundWarehouseOptions.value.length
+    }
+  } finally {
+    inboundWarehouseOptionsLoading.value = false
+  }
+}
+
+const mergeInboundWarehouseById = async (id) => {
+  if (id == null || id === '') return
+  const wid = Number(id)
+  if (inboundWarehouseOptions.value.some((w) => Number(w.id) === wid)) return
+  try {
+    const w = await warehouseApi.get(id)
+    if (w) inboundWarehouseOptions.value = mergeOptionsById(inboundWarehouseOptions.value, [w])
+  } catch {
+    /* ignore */
+  }
+}
+
+const onInboundWarehouseVisibleChange = async (visible) => {
+  if (!visible) return
+  if (inboundWarehouseOptions.value.length === 0) {
+    await loadMoreInboundWarehouseOptions({ reset: true, keyword: '' })
+  }
+  if (filterInboundWarehouse.value != null) await mergeInboundWarehouseById(filterInboundWarehouse.value)
+}
+
+const onInboundWarehouseFilter = (keyword) => {
+  loadMoreInboundWarehouseOptions({ reset: true, keyword: keyword || '' })
+}
+
+/** 新建采购单商品下拉：排除停售 */
+const selectableProductOptions = computed(() =>
+  productOptions.value.filter(isProductSelectableForOrder)
+)
+const productLookupList = computed(() => mergeOptionsById(productList.value, productOptions.value))
+
+// 动态获取仓库名称：优先已加载的分页下拉与 dataStore 缓存
 const getWarehouseName = (warehouseId) => {
-  const warehouse = warehousesList.value.find(w => w.id === warehouseId)
-  return warehouse?.name || ''
+  if (warehouseId == null || warehouseId === '') return ''
+  const wid = Number(warehouseId)
+  const fromInbound = inboundWarehouseOptions.value.find((w) => Number(w.id) === wid)
+  if (fromInbound?.name) return fromInbound.name
+  const fromStore = warehousesList.value.find((w) => Number(w.id) === wid)
+  return fromStore?.name || ''
+}
+
+/** 供应商邮箱只读展示：空或纯空白时统一为「未填写」 */
+const formatSupplierEmailDisplay = (email) => {
+  const t = email == null ? '' : String(email).trim()
+  return t || '未填写'
 }
 
 /** 只读数量展示：无步进器占位，大数字用千分位，避免挤占宽度 */
@@ -587,25 +826,9 @@ const formatQtyDisplay = (n) => {
   return num.toLocaleString()
 }
 
-const purchaseOrders = computed(() => dataStore.purchaseOrders || [])
-const inboundRecords = computed(() => dataStore.inboundRecords || [])
-
-// 供应商列表带统计数据（从采购订单计算）
-const suppliersListWithStats = computed(() => {
-  const suppliers = dataStore.suppliers || []
-  const orders = dataStore.purchaseOrders || []
-  return suppliers.map(s => {
-    const supplierOrders = orders.filter(o => o.supplierId === s.id)
-    return {
-      ...s,
-      orders: supplierOrders.length,
-      amount: supplierOrders.reduce((sum, o) => sum + (o.amount || 0), 0)
-    }
-  })
-})
-
-const filteredSuppliersListWithStats = computed(() => {
-  const list = suppliersListWithStats.value
+/** 供应商管理卡片：合作订单数、总采购额由后端 /v1/suppliers 分页接口聚合返回 */
+const filteredSuppliersList = computed(() => {
+  const list = suppliersList.value || []
   const kw = supplierSearchKeyword.value?.trim()
   if (!kw) return list
   const lower = kw.toLowerCase()
@@ -634,8 +857,10 @@ const purchaseOrderSummary = ref({
   unpaidAmount: 0,
   refundedAmount: 0
 })
+let purchaseTableRequestSeq = 0
 
 const fetchPurchaseOrderTable = async (showLoading = true) => {
+  const requestSeq = ++purchaseTableRequestSeq
   if (showLoading) loading.value = true
   try {
     const res = await purchaseApi.list({
@@ -649,6 +874,7 @@ const fetchPurchaseOrderTable = async (showLoading = true) => {
       expectDateStart: filterExpectDateRange.value?.[0],
       expectDateEnd: filterExpectDateRange.value?.[1]
     })
+    if (requestSeq !== purchaseTableRequestSeq) return
     purchaseOrderTableRows.value = res.list || []
     purchaseOrderTotal.value = Number(res.total) || 0
     const s = res.summary || {}
@@ -659,11 +885,15 @@ const fetchPurchaseOrderTable = async (showLoading = true) => {
       refundedAmount: Number(s.refundedAmount) || 0
     }
   } catch (e) {
+    if (requestSeq !== purchaseTableRequestSeq) return
     ElMessage.error(e.message || '加载采购订单失败')
-    purchaseOrderTableRows.value = []
-    purchaseOrderTotal.value = 0
-    purchaseOrderSummary.value = { totalAmount: 0, paidAmount: 0, unpaidAmount: 0, refundedAmount: 0 }
+    // 保留上一次成功数据，避免偶发失败导致返回后列表被清空
+    if (!purchaseOrderTableRows.value.length) {
+      purchaseOrderTotal.value = 0
+      purchaseOrderSummary.value = { totalAmount: 0, paidAmount: 0, unpaidAmount: 0, refundedAmount: 0 }
+    }
   } finally {
+    if (requestSeq !== purchaseTableRequestSeq) return
     if (showLoading) loading.value = false
   }
 }
@@ -710,7 +940,7 @@ const fetchInboundTable = async (showLoading = true) => {
 // 操作人下拉：由当前已加载的入库记录去重（辅助筛选）
 const inboundOperators = computed(() => {
   const operators = new Set()
-  inboundRecords.value.forEach(r => {
+  inboundTableRows.value.forEach(r => {
     if (r.operatorName || r.operator) {
       operators.add(r.operatorName || r.operator)
     }
@@ -750,19 +980,9 @@ const loadStats = async () => {
 const loadData = async () => {
   loading.value = true
   try {
-    const tasks = [
-      dataStore.loadSuppliers(),
-      dataStore.loadPurchaseOrders(),
-      dataStore.loadInboundRecords()
-    ]
-    if (canPurchaseSuppliersTab.value) {
-      tasks.push(dataStore.loadSupplierIndustries())
-    }
-    if (canLoadProductList.value) {
-      tasks.push(dataStore.loadProducts())
-    }
-    if (canLoadWarehouseList.value) {
-      tasks.push(dataStore.loadWarehouses())
+    const tasks = []
+    if (canPurchaseSuppliersTab.value && activeTab.value === 'suppliers') {
+      tasks.push(dataStore.loadSuppliers(), dataStore.loadSupplierIndustries())
     }
     await Promise.all(tasks)
     await loadStats()
@@ -771,6 +991,14 @@ const loadData = async () => {
   } finally {
     loading.value = false
   }
+}
+
+const loadPurchaseDialogOptions = async () => {
+  const tasks = [loadMoreSupplierOptions({ reset: true, keyword: '' })]
+  if (canLoadProductList.value) {
+    tasks.push(loadMoreProductOptions({ reset: true, keyword: '' }))
+  }
+  await Promise.all(tasks)
 }
 
 // 表单
@@ -782,7 +1010,6 @@ const purchaseForm = ref({
   pendingQuantity: 1,
   inboundQuantity: 0,
   price: 0,
-  warehouseId: 1,
   deliveryDate: new Date(Date.now() + 5 * 24 * 60 * 60 * 1000),
   payMethod: '账期30天',
   remark: ''
@@ -792,7 +1019,8 @@ const purchaseRules = {
   supplierId: [{ required: true, message: '请选择供应商', trigger: 'change' }],
   productId: [{ required: true, message: '请选择商品', trigger: 'change' }],
   totalQuantity: [{ required: true, message: '请输入采购总量', trigger: 'blur' }],
-  price: [{ required: true, message: '请输入单价', trigger: 'blur' }]
+  price: [{ required: true, message: '请输入单价', trigger: 'blur' }],
+  remark: [{ max: PURCHASE_REMARK_MAX_LENGTH, message: `备注不能超过${PURCHASE_REMARK_MAX_LENGTH}个字符`, trigger: 'blur' }]
 }
 
 // 监听采购总量变化，自动更新待入库数量
@@ -818,7 +1046,7 @@ const supplierRules = {
 
 // 商品选择变化时自动填充成本价
 const onProductChange = (productId) => {
-  const product = productList.value.find(p => p.id === productId)
+  const product = productLookupList.value.find(p => p.id === productId)
   if (product) {
     purchaseForm.value.price = product.costPrice || 0
   }
@@ -835,21 +1063,37 @@ const getProductIcon = (productName) => {
 }
 
 // 获取商品图片
-const getProductImage = (productId) => {
-  const product = productList.value.find(p => p.id === productId)
+const getProductImageById = (productId) => {
+  const product = productLookupList.value.find(p => p.id === productId)
   return firstProductImageUrl(product?.image)
+}
+
+const getRowProductImage = (row) => {
+  const imageFromRow = firstProductImageUrl(row?.productImage || row?.image)
+  if (imageFromRow) return imageFromRow
+  return getProductImageById(row?.productId)
+}
+
+const getRowProductPreviewList = (row) => {
+  const product = productLookupList.value.find((p) => p.id === row?.productId)
+  return productRowPreviewUrls(row, product?.image)
 }
 
 // 获取商品名称（从商品列表动态获取最新名称）
 const getProductName = (productId, fallbackName) => {
-  const product = productList.value.find(p => p.id === productId)
+  const product = productLookupList.value.find(p => p.id === productId)
   return product?.name || fallbackName || '-'
 }
 
 // 选中商品的图片
 const selectedProductImage = computed(() => {
   if (!purchaseForm.value.productId) return null
-  return getProductImage(purchaseForm.value.productId)
+  return getProductImageById(purchaseForm.value.productId)
+})
+
+const selectedProductPreviewList = computed(() => {
+  const p = productLookupList.value.find((x) => x.id === purchaseForm.value.productId)
+  return parseProductImageUrls(p?.image)
 })
 
 // 辅助函数
@@ -916,6 +1160,17 @@ const formatExpectDate = (expectDate) => {
   return expectDate
 }
 
+const formatDateForApi = (dateValue) => {
+  if (!dateValue) return null
+  if (typeof dateValue === 'string') return dateValue.substring(0, 10)
+  if (dateValue instanceof Date && !Number.isNaN(dateValue.getTime())) {
+    return dateValue.toISOString().substring(0, 10)
+  }
+  return null
+}
+
+const resolveExpectDate = (row) => row?.expectDate || row?.expectedDate || row?.deliveryDate || null
+
 // 判断期望交货日期是否已过期
 const isExpectDateOverdue = (expectDate) => {
   if (!expectDate) return false
@@ -925,13 +1180,12 @@ const isExpectDateOverdue = (expectDate) => {
   return expect < today
 }
 
-// 打开对话框
-const openPurchaseDialog = async () => {
+// 打开对话框（先弹出，再异步预拉供应商/商品/仓库 options，避免长时间无响应）
+const openPurchaseDialog = () => {
   if (!canAddPurchase.value) {
     ElMessage.warning('无新建采购单权限')
     return
   }
-  await loadData()
   purchaseForm.value = {
     supplierId: null,
     productId: null,
@@ -940,12 +1194,12 @@ const openPurchaseDialog = async () => {
     pendingQuantity: 1,
     inboundQuantity: 0,
     price: 0,
-    warehouseId: 1,
     deliveryDate: new Date(Date.now() + 5 * 24 * 60 * 60 * 1000),
     payMethod: '账期30天',
     remark: ''
   }
   purchaseDialogVisible.value = true
+  void loadPurchaseDialogOptions()
 }
 
 const openSupplierDialog = () => {
@@ -973,13 +1227,13 @@ const submitPurchase = async () => {
           productId: purchaseForm.value.productId,
           quantity: purchaseForm.value.totalQuantity,
           unitPrice: purchaseForm.value.price,
-          warehouseId: purchaseForm.value.warehouseId,
+          payMethod: purchaseForm.value.payMethod,
+          expectDate: formatDateForApi(purchaseForm.value.deliveryDate),
           remark: purchaseForm.value.remark
         })
         ElMessage.success('采购单创建成功')
         purchaseDialogVisible.value = false
         await Promise.all([
-          dataStore.loadPurchaseOrders(),
           fetchPurchaseOrderTable(false),
           loadStats()
         ])
@@ -1069,7 +1323,6 @@ const deletePurchaseOrder = async (row) => {
     await purchaseApi.delete(row.id)
     ElMessage.success('采购单已删除')
     await Promise.all([
-      dataStore.loadPurchaseOrders(),
       fetchPurchaseOrderTable(false),
       loadStats()
     ])
@@ -1082,23 +1335,53 @@ const deletePurchaseOrder = async (row) => {
 
 // 点击采购单号跳转到采购单详情
 const goToPurchaseOrder = (row) => {
-  const purchaseNo = row.purchaseOrderNo || row.purchaseNo
-  const order = purchaseOrders.value.find(o => o.orderNo === purchaseNo)
-  if (order) {
-    router.push(`/purchase/order/${order.id}`)
-  } else {
-    ElMessage.warning('未找到对应的采购单')
+  const directId = row.purchaseOrderId || row.orderId
+  if (directId) {
+    router.push(`/purchase/order/${directId}`)
+    return
   }
+  const purchaseNo = row.purchaseOrderNo || row.purchaseNo
+  if (!purchaseNo) {
+    ElMessage.warning('未找到对应的采购单')
+    return
+  }
+  purchaseApi
+    .list({ page: 1, size: 1, keyword: purchaseNo })
+    .then((res) => {
+      const order = (res.list || []).find(o => o.orderNo === purchaseNo)
+      if (order?.id) {
+        router.push(`/purchase/order/${order.id}`)
+      } else {
+        ElMessage.warning('未找到对应的采购单')
+      }
+    })
+    .catch((e) => {
+      ElMessage.error(e.message || '查询采购单失败')
+    })
 }
 
-const createPurchaseFromSupplier = async (s) => {
+const createPurchaseFromSupplier = (s) => {
   if (!canAddPurchase.value) {
     ElMessage.warning('无新建采购单权限')
     return
   }
-  await loadData()
-  purchaseForm.value.supplierId = s.id
+  if (s?.id != null) {
+    supplierOptions.value = mergeOptionsById(supplierOptions.value, [s])
+  }
+  purchaseForm.value = {
+    supplierId: s?.id ?? null,
+    productId: null,
+    date: new Date(),
+    totalQuantity: 1,
+    pendingQuantity: 1,
+    inboundQuantity: 0,
+    price: 0,
+    deliveryDate: new Date(Date.now() + 5 * 24 * 60 * 60 * 1000),
+    payMethod: '账期30天',
+    remark: ''
+  }
   purchaseDialogVisible.value = true
+  void loadPurchaseDialogOptions()
 }
 
 const viewSupplierDetail = (s) => {
@@ -1138,8 +1421,6 @@ const deleteSupplier = async (s) => {
     ElMessage.success('供应商已删除')
     await Promise.all([
       dataStore.loadSuppliers(),
-      dataStore.loadPurchaseOrders(),
-      dataStore.loadInboundRecords(),
       loadStats()
     ])
   } catch (error) {
@@ -1149,11 +1430,6 @@ const deleteSupplier = async (s) => {
   }
 }
 
-const printPurchaseOrder = () => {
-  ElMessage.success('打印采购单功能已触发')
-  orderDetailVisible.value = false
-}
-
 const syncPurchaseTabToPermissions = () => {
   if (activeTab.value === 'suppliers' && !canPurchaseSuppliersTab.value) {
     activeTab.value = 'orders'
@@ -1161,6 +1437,16 @@ const syncPurchaseTabToPermissions = () => {
 }
 
 watch([canPurchaseSuppliersTab], () => syncPurchaseTabToPermissions())
+
+watch(activeTab, async (tab) => {
+  if (tab !== 'suppliers' || !canPurchaseSuppliersTab.value) return
+  if (!dataStore.suppliers?.length) {
+    await dataStore.loadSuppliers()
+  }
+  if (!dataStore.supplierIndustries?.length) {
+    await dataStore.loadSupplierIndustries()
+  }
+})
 
 // 初始化加载
 onMounted(() => {
@@ -1200,11 +1486,110 @@ onMounted(() => {
   }
 
   .card-header {
-    display: flex; justify-content: flex-end; align-items: center;
-    .header-actions { display: flex; align-items: center; gap: 16px; }
+    display: flex;
+    justify-content: flex-end;
+    align-items: flex-start;
+    width: 100%;
+    min-width: 0;
+
+    .header-actions {
+      display: flex;
+      align-items: center;
+      gap: 10px 12px;
+    }
   }
 
-  .order-no { color: #E94560; font-family: monospace;
+  /* 列表卡片筛选栏：允许换行与弹性宽度，适配 13–15 寸屏 */
+  .page-filter-bar {
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    width: 100%;
+    max-width: 100%;
+    box-sizing: border-box;
+
+    @media (max-width: 1400px) {
+      justify-content: flex-start;
+    }
+
+    .page-filter-primary {
+      flex: 0 0 auto;
+    }
+
+    .page-filter-ctl--wide {
+      width: 160px;
+      flex: 1 1 150px;
+      min-width: 120px;
+      max-width: 200px;
+    }
+
+    .page-filter-ctl--narrow {
+      width: 132px;
+      flex: 1 1 120px;
+      min-width: 112px;
+      max-width: 168px;
+    }
+
+    .page-filter-ctl--daterange {
+      width: 248px;
+      flex: 2 1 220px;
+      min-width: 200px;
+      max-width: 380px;
+    }
+
+    .page-filter-ctl--search {
+      width: 200px;
+      flex: 3 1 200px;
+      min-width: 180px;
+      max-width: 100%;
+    }
+
+    @media (max-width: 1400px) {
+      .page-filter-ctl--wide,
+      .page-filter-ctl--narrow,
+      .page-filter-ctl--daterange,
+      .page-filter-ctl--search {
+        width: auto;
+        max-width: none;
+      }
+
+      .page-filter-ctl--wide {
+        flex: 1 1 calc(50% - 6px);
+        min-width: 136px;
+      }
+
+      .page-filter-ctl--narrow {
+        flex: 1 1 calc(50% - 6px);
+        min-width: 120px;
+      }
+
+      .page-filter-ctl--daterange {
+        flex: 1 1 100%;
+        min-width: 0;
+      }
+
+      .page-filter-ctl--search {
+        flex: 1 1 min(100%, 420px);
+        min-width: 0;
+      }
+    }
+
+    @media (max-width: 720px) {
+      .page-filter-ctl--wide,
+      .page-filter-ctl--narrow,
+      .page-filter-ctl--search {
+        flex: 1 1 100%;
+        min-width: 0;
+      }
+    }
+
+    .page-filter-ctl--daterange :deep(.el-range-editor.el-input__wrapper) {
+      width: 100%;
+      max-width: 100%;
+      box-sizing: border-box;
+    }
+  }
+
+  .order-no { color: #E94560;
     &.success { color: #67C23A; }
     &.clickable { cursor: pointer; &:hover { text-decoration: underline; } }
   }
@@ -1227,10 +1612,9 @@ onMounted(() => {
     gap: 8px;
 
     .product-thumb-mini {
-      width: 32px;
-      height: 32px;
-      object-fit: cover;
+      flex-shrink: 0;
       border-radius: 4px;
+      overflow: hidden;
     }
 
     .product-icon-mini {
@@ -1278,6 +1662,10 @@ onMounted(() => {
       font-size: 14px;
       color: #303133;
     }
+  }
+
+  .suppliers-tab-wrap {
+    min-height: 280px;
   }
 
   .supplier-search-bar {
@@ -1338,10 +1726,8 @@ onMounted(() => {
     justify-content: center;
 
     .product-preview {
-      width: 80px;
-      height: 80px;
-      object-fit: cover;
       border-radius: 8px;
+      overflow: hidden;
     }
 
     .product-preview-placeholder {

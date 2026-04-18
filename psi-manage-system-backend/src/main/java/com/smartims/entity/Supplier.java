@@ -5,6 +5,7 @@ import com.smartims.util.StatusNameResolver;
 import lombok.Data;
 
 import java.io.Serializable;
+import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.List;
 
@@ -42,6 +43,14 @@ public class Supplier implements Serializable {
     /** 行业名称展示（顿号拼接，非表字段） */
     @TableField(exist = false)
     private String industryNames;
+
+    /** 合作采购订单数（非表字段，来自 purchase_order 聚合） */
+    @TableField(exist = false)
+    private Long purchaseOrderCount;
+
+    /** 总采购额（非表字段，来自 purchase_order 聚合） */
+    @TableField(exist = false)
+    private BigDecimal totalPurchaseAmount;
 
     private Integer deliveryDays;
 

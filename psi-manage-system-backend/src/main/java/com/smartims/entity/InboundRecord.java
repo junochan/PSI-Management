@@ -39,6 +39,12 @@ public class InboundRecord implements Serializable {
 
     private String sku;
 
+    /**
+     * 商品图片（聚合字段，非表字段）
+     */
+    @TableField(exist = false)
+    private String productImage;
+
     private Integer quantity;
 
     private BigDecimal unitPrice;

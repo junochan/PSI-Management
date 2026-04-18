@@ -1,7 +1,9 @@
 package com.smartims.service;
 
-import com.smartims.entity.SysCategory;
+import com.smartims.common.PageResult;
 import com.smartims.dto.CategoryDTO;
+import com.smartims.dto.PageQuery;
+import com.smartims.entity.SysCategory;
 
 import java.util.List;
 
@@ -21,6 +23,13 @@ public interface CategoryService {
      * @param code    非空时对分类编码模糊匹配（LIKE）；可与 name 同时传入，条件为 AND
      */
     List<SysCategory> listCategories(Integer status, String name, String code);
+
+    /**
+     * 分页查询分类（下拉：keyword 对名称、编码模糊匹配）
+     *
+     * @param status 为 null 时不按状态过滤；为 1 仅启用，为 0 仅禁用
+     */
+    PageResult<SysCategory> pageCategories(PageQuery pageQuery, Integer status);
 
     /**
      * 获取分类详情

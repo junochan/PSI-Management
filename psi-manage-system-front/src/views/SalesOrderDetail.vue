@@ -1,5 +1,5 @@
 <template>
-  <div class="sales-order-detail">
+  <div class="sales-order-detail" v-loading="pageLoading" element-loading-text="加载中...">
     <el-card>
       <template #header>
         <div class="card-header">
@@ -11,13 +11,21 @@
           </div>
         </div>
       </template>
-      <el-descriptions :column="2" border>
+      <el-descriptions :column="2" border class="sales-order-detail-descriptions">
         <el-descriptions-item label="订单编号"><span class="order-no">{{ order?.orderNo }}</span></el-descriptions-item>
         <el-descriptions-item label="下单时间">{{ formatTime(order?.createTime) }}</el-descriptions-item>
         <el-descriptions-item label="客户">{{ customerDetail?.name || order?.customerName || order?.customer || '-' }}</el-descriptions-item>
         <el-descriptions-item label="商品">
           <div class="product-cell">
-            <img v-if="getProductImage(order?.productId)" :src="getProductImage(order?.productId)" class="product-thumb" />
+            <ProductImageThumb
+              v-if="getProductImage(order?.productId)"
+              :src="getProductImage(order?.productId)"
+              :preview-src-list="orderProductPreviewList"
+              class="product-thumb"
+              :width="40"
+              :height="40"
+              :radius="6"
+            />
             <span v-else class="product-icon">{{ getProductIcon(getProductName(order?.productId, order?.productName || order?.product)) }}</span>
             <span class="product-name">{{ getProductName(order?.productId, order?.productName || order?.product) }}</span>
           </div>
@@ -33,9 +41,19 @@
         <el-descriptions-item label="订单状态"><el-tag :type="getStatusType(order?.status)">{{ formatOrderStatus(order?.status) }}</el-tag></el-descriptions-item>
         <el-descriptions-item label="付款状态"><el-tag :type="getPayStatusType(order?.status === 'completed' ? 'paid' : order?.payStatus)">{{ formatPayStatus(order?.status === 'completed' ? 'paid' : order?.payStatus) }}</el-tag></el-descriptions-item>
         <el-descriptions-item label="付款方式">{{ order?.payMethod || order?.paymentMethod || '-' }}</el-descriptions-item>
-        <el-descriptions-item label="期望到达日期">{{ order?.expectArriveDate || order?.expectedArriveDate || '-' }}</el-descriptions-item>
+        <el-descriptions-item label="预计到达日期">{{ order?.expectArriveDate || order?.expectedArriveDate || '-' }}</el-descriptions-item>
         <el-descriptions-item label="操作人">{{ order?.operatorName || order?.operator || order?.creatorName || '-' }}</el-descriptions-item>
-        <el-descriptions-item label="备注">{{ order?.remark || '-' }}</el-descriptions-item>
+        <el-descriptions-item label="备注">
+          <el-tooltip
+            :content="order?.remark || '-'"
+            placement="top-start"
+            effect="dark"
+            :show-after="200"
+            popper-class="ep-table-overflow-tooltip sales-order-detail-tooltip"
+          >
+            <div class="sales-order-detail-remark-text">{{ order?.remark || '-' }}</div>
+          </el-tooltip>
+        </el-descriptions-item>
       </el-descriptions>
     </el-card>
 
@@ -84,13 +102,15 @@ import { ElMessage } from 'element-plus'
 import { categoryApi, customerApi, productApi, salesApi, warehouseApi } from '@/api'
 import { formatTime } from '@/utils/time'
 import { formatAmountDisplay } from '@/utils/moneyFormat'
-import { firstProductImageUrl } from '@/utils/productImages'
+import ProductImageThumb from '@/components/ProductImageThumb.vue'
+import { firstProductImageUrl, parseProductImageUrls } from '@/utils/productImages'
 
 const router = useRouter()
 const route = useRoute()
 
 const orderId = computed(() => route.params.id)
 const order = ref(null)
+const pageLoading = ref(true)
 
 /** 优先展示后端单价；否则用金额÷数量推算，格式与全局金额规则一致 */
 const formatSalesOrderUnitPrice = (o) => {
@@ -146,17 +166,22 @@ const loadRelatedData = async () => {
 const fetchOrderDetail = async () => {
   const id = Number(orderId.value)
   if (!id) {
+    pageLoading.value = false
     ElMessage.warning('订单 ID 无效')
     router.replace('/sales')
     return
   }
+  pageLoading.value = true
   try {
     order.value = await salesApi.get(id)
-    await loadRelatedData()
   } catch (e) {
     ElMessage.error(e.message || '加载订单失败')
     router.replace('/sales')
+    order.value = null
+  } finally {
+    pageLoading.value = false
   }
+  if (order.value) void loadRelatedData()
 }
 
 // 计算发货数量
@@ -171,6 +196,10 @@ const getProductImage = (productId) => {
   if (!order.value || order.value.productId !== productId) return ''
   return firstProductImageUrl(productDetail.value?.image || order.value.productImage || order.value.image)
 }
+
+const orderProductPreviewList = computed(() =>
+  parseProductImageUrls(productDetail.value?.image || order.value?.productImage || order.value?.image)
+)
 
 // 商品名称优先使用关联详情接口
 const getProductName = (productId, fallbackName) => {
@@ -372,7 +401,6 @@ const handleReceived = async () => {
 
   .order-no {
     color: #E94560;
-    font-family: monospace;
   }
 
   .amount {
@@ -405,6 +433,34 @@ const handleReceived = async () => {
     color: #409EFF;
   }
 
+  :deep(.sales-order-detail-descriptions .el-descriptions__label) {
+    width: 88px;
+    white-space: nowrap;
+    vertical-align: top;
+  }
+
+  :deep(.sales-order-detail-descriptions .el-descriptions__content) {
+    vertical-align: top;
+    min-width: 0;
+  }
+
+  :deep(.sales-order-detail-descriptions .el-descriptions__table) {
+    width: 100%;
+    table-layout: fixed;
+  }
+
+  :deep(.sales-order-detail-descriptions .sales-order-detail-remark-text) {
+    display: block;
+    width: 100%;
+    max-width: 100%;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+    line-height: 1.5;
+    overflow: hidden;
+    overflow-x: hidden;
+    padding-right: 4px;
+  }
+
   // 商品图片样式
   .product-cell {
     display: flex;
@@ -412,10 +468,9 @@ const handleReceived = async () => {
     gap: 12px;
 
     .product-thumb {
-      width: 40px;
-      height: 40px;
-      object-fit: cover;
+      flex-shrink: 0;
       border-radius: 6px;
+      overflow: hidden;
     }
 
     .product-icon {
@@ -434,5 +489,23 @@ const handleReceived = async () => {
       color: #303133;
     }
   }
+}
+</style>
+
+<style lang="scss">
+.el-popper.sales-order-detail-tooltip[role='tooltip'],
+.el-tooltip__popper.sales-order-detail-tooltip {
+  max-width: min(320px, calc(100vw - 48px)) !important;
+  width: auto !important;
+  box-sizing: border-box !important;
+}
+
+.el-popper.sales-order-detail-tooltip[role='tooltip'] .el-popper__content,
+.el-tooltip__popper.sales-order-detail-tooltip .el-popper__content {
+  max-width: 100% !important;
+  white-space: normal !important;
+  word-break: break-word !important;
+  overflow-wrap: anywhere !important;
+  line-height: 1.5;
 }
 </style>

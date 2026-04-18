@@ -27,7 +27,7 @@
 
         <el-alert v-if="role?.id === 1" type="warning" title="超级管理员拥有所有权限，不可修改" :closable="false" show-icon style="margin-bottom: 16px" />
 
-        <div class="permission-tree-wrap" v-loading="loading">
+        <div class="permission-tree-wrap" v-loading="loading" element-loading-text="加载中...">
           <el-tree
             ref="treeRef"
             class="permission-tree"
@@ -253,7 +253,6 @@ onMounted(() => {
     .permission-code {
       font-size: 12px;
       color: #909399;
-      font-family: monospace;
     }
   }
 }

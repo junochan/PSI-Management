@@ -26,6 +26,13 @@ export function firstProductImageUrl(image) {
   return u.length ? u[0] : null
 }
 
+/** 表格行：优先行内 productImage/image，否则用商品表 image（与 getRowProductImage 逻辑一致） */
+export function productRowPreviewUrls(row, productImageFallback) {
+  const fromRow = parseProductImageUrls(row?.productImage || row?.image)
+  if (fromRow.length) return fromRow
+  return parseProductImageUrls(productImageFallback)
+}
+
 /** 提交后端：单张存原 URL，多张存 JSON 数组，避免 URL 内含逗号歧义 */
 export function encodeProductImagesForApi(urls) {
   if (!urls?.length) return ''

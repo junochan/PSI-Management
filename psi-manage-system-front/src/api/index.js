@@ -215,6 +215,8 @@ export const authApi = {
   login: (data) => api.post('/auth/login', data),
   /** 中转页：body { key } 与后端 app.sso-bypass.secret 一致 */
   ssoLogin: (data) => api.post('/auth/sso-login', data),
+  /** 活跃续期：返回 { token } */
+  refresh: () => api.post('/auth/refresh'),
   logout: () => api.post('/auth/logout'),
   /** 菜单树、权限码、前端路由表（需登录） */
   navigation: () => api.get('/auth/navigation'),
@@ -247,6 +249,8 @@ export const operationLogApi = {
 // 角色管理 API
 export const roleApi = {
   list: () => api.get('/roles'),
+  /** 分页；keyword 对名称、编码、描述模糊 */
+  listPage: (params) => api.get('/roles/page', { params: params || {} }),
   get: (id) => api.get(`/roles/${id}`),
   permissions: (id) => api.get(`/roles/${id}/permissions`),
   allPermissions: () => api.get('/roles/permissions'),
@@ -264,6 +268,12 @@ export const CATEGORY_STATUS = {
 }
 
 export const categoryApi = {
+  /**
+   * @param {Record<string, unknown>} [params]
+   * - status：1 仅启用，0 仅禁用；不传不按状态过滤
+   * - page、size、keyword：分页；keyword 对名称、编码模糊
+   */
+  listPage: (params) => api.get('/categories/page', { params: params || {} }),
   /**
    * @param {Record<string, unknown>} [params]
    * - status：1 仅启用，0 仅禁用；不传不按状态过滤

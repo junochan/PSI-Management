@@ -1,5 +1,5 @@
 <template>
-  <div class="aftersales-detail">
+  <div class="aftersales-detail" v-loading="pageLoading" element-loading-text="加载中...">
     <el-card>
       <template #header>
         <div class="card-header">
@@ -75,6 +75,7 @@ const router = useRouter()
 const route = useRoute()
 const orderId = computed(() => route.params.id)
 const order = ref(null)
+const pageLoading = ref(true)
 
 const getTypeColor = (type) => ({ '质量问题': 'warning', '退换货': 'info', '物流问题': 'info', '发票问题': 'info' }[type] || 'info')
 
@@ -115,17 +116,22 @@ const isResolved = (status) => {
 }
 
 onMounted(async () => {
-  const id = Number(orderId.value)
-  if (!id) {
-    ElMessage.warning('工单 ID 无效')
-    router.replace('/sales')
-    return
-  }
+  pageLoading.value = true
   try {
-    order.value = await aftersalesApi.get(id)
-  } catch (e) {
-    ElMessage.error(e.message || '加载售后工单失败')
-    router.replace('/sales')
+    const id = Number(orderId.value)
+    if (!id) {
+      ElMessage.warning('工单 ID 无效')
+      router.replace('/sales')
+      return
+    }
+    try {
+      order.value = await aftersalesApi.get(id)
+    } catch (e) {
+      ElMessage.error(e.message || '加载售后工单失败')
+      router.replace('/sales')
+    }
+  } finally {
+    pageLoading.value = false
   }
 })
 
@@ -145,6 +151,6 @@ const addRecord = () => { ElMessage.success('添加处理记录功能已触发')
     align-items: center;
     .header-actions { display: flex; gap: 12px; }
   }
-  .order-no { color: #E94560; font-family: monospace; }
+  .order-no { color: #E94560; }
 }
 </style>

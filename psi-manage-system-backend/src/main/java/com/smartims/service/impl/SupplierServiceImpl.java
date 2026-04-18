@@ -17,12 +17,14 @@ import com.smartims.mapper.SupplierIndustryLinkMapper;
 import com.smartims.mapper.SupplierIndustryMapper;
 import com.smartims.mapper.SupplierMapper;
 import com.smartims.service.SupplierService;
+import com.smartims.vo.SupplierPurchaseStatsRow;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
+import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
@@ -79,6 +81,7 @@ public class SupplierServiceImpl implements SupplierService {
         Page<Supplier> result = supplierMapper.selectPage(page, queryWrapper);
 
         fillIndustries(result.getRecords());
+        fillPurchaseStats(result.getRecords());
         return PageResult.build(result.getTotal(), result.getCurrent(), result.getSize(), result.getRecords());
     }
 
@@ -89,6 +92,7 @@ public class SupplierServiceImpl implements SupplierService {
             throw new BusinessException("供应商不存在");
         }
         fillIndustries(List.of(supplier));
+        fillPurchaseStats(List.of(supplier));
         return supplier;
     }
 
@@ -276,6 +280,37 @@ public class SupplierServiceImpl implements SupplierService {
             s.setIndustryIds(new ArrayList<>(iids));
             String names = iids.stream().map(idToName::get).filter(Objects::nonNull).collect(Collectors.joining("、"));
             s.setIndustryNames(names);
+        }
+    }
+
+    /**
+     * 填充当前页供应商在采购订单中的条数与金额合计（单次 IN + GROUP BY，避免 N+1）。
+     */
+    private void fillPurchaseStats(List<Supplier> suppliers) {
+        if (suppliers == null || suppliers.isEmpty()) {
+            return;
+        }
+        List<Long> ids = suppliers.stream()
+                .map(Supplier::getId)
+                .filter(Objects::nonNull)
+                .distinct()
+                .toList();
+        if (ids.isEmpty()) {
+            return;
+        }
+        List<SupplierPurchaseStatsRow> rows = purchaseOrderMapper.selectPurchaseStatsBySupplierIds(ids);
+        Map<Long, SupplierPurchaseStatsRow> byId = (rows == null || rows.isEmpty())
+                ? Collections.emptyMap()
+                : rows.stream().collect(Collectors.toMap(SupplierPurchaseStatsRow::getSupplierId, r -> r, (a, b) -> a));
+        for (Supplier s : suppliers) {
+            SupplierPurchaseStatsRow row = byId.get(s.getId());
+            if (row == null) {
+                s.setPurchaseOrderCount(0L);
+                s.setTotalPurchaseAmount(BigDecimal.ZERO);
+                continue;
+            }
+            s.setPurchaseOrderCount(row.getPurchaseOrderCount() != null ? row.getPurchaseOrderCount() : 0L);
+            s.setTotalPurchaseAmount(row.getTotalPurchaseAmount() != null ? row.getTotalPurchaseAmount() : BigDecimal.ZERO);
         }
     }
 

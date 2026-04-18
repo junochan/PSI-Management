@@ -4,6 +4,7 @@ import { ref, computed } from 'vue'
 export const useUserStore = defineStore('user', () => {
   const userInfo = ref(null)
   const token = ref(localStorage.getItem('token') || '')
+  const TOKEN_UPDATED_AT_KEY = 'tokenUpdatedAt'
 
   const isLoggedIn = computed(() => !!userInfo.value || !!token.value)
 
@@ -19,6 +20,7 @@ export const useUserStore = defineStore('user', () => {
     if (jwtToken) {
       token.value = jwtToken
       localStorage.setItem('token', jwtToken)
+      localStorage.setItem(TOKEN_UPDATED_AT_KEY, String(Date.now()))
     }
     localStorage.setItem('userInfo', JSON.stringify(userInfo.value))
   }
@@ -27,7 +29,15 @@ export const useUserStore = defineStore('user', () => {
     userInfo.value = null
     token.value = ''
     localStorage.removeItem('token')
+    localStorage.removeItem(TOKEN_UPDATED_AT_KEY)
     localStorage.removeItem('userInfo')
+  }
+
+  const setToken = (jwtToken) => {
+    if (!jwtToken) return
+    token.value = jwtToken
+    localStorage.setItem('token', jwtToken)
+    localStorage.setItem(TOKEN_UPDATED_AT_KEY, String(Date.now()))
   }
 
   const initUser = () => {
@@ -69,6 +79,7 @@ export const useUserStore = defineStore('user', () => {
     isLoggedIn,
     login,
     logout,
+    setToken,
     initUser,
     updateUser,
     hasPermission,

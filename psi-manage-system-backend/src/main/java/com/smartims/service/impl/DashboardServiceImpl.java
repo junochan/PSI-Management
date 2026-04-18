@@ -309,19 +309,32 @@ public class DashboardServiceImpl implements DashboardService {
             row.setStagnantDays(sd);
             rows.add(row);
         }
-        rows.sort((a, b) -> Long.compare(b.getStagnantDays(), a.getStagnantDays()));
+        rows.sort((a, b) -> {
+            int c = Long.compare(b.getStagnantDays(), a.getStagnantDays());
+            if (c != 0) {
+                return c;
+            }
+            long idA = a.getId() != null ? a.getId() : 0L;
+            long idB = b.getId() != null ? b.getId() : 0L;
+            return Long.compare(idB, idA);
+        });
         if (rows.size() > 10) {
             return rows.subList(0, 10);
         }
         return rows;
     }
 
+    /**
+     * 与库存列表呆滞筛选一致：{@code COALESCE(last_outbound_time, last_inbound_time, create_time)} 起算至今的天数。
+     */
     private static long computeStagnantDays(Inventory i, LocalDateTime now) {
         LocalDateTime ref = null;
         if (i.getLastOutboundTime() != null) {
             ref = i.getLastOutboundTime();
         } else if (i.getLastInboundTime() != null) {
             ref = i.getLastInboundTime();
+        } else if (i.getCreateTime() != null) {
+            ref = i.getCreateTime();
         }
         if (ref == null) {
             return 0L;

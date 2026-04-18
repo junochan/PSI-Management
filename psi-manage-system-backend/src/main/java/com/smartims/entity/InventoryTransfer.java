@@ -28,6 +28,18 @@ public class InventoryTransfer implements Serializable {
 
     private String productName;
 
+    /**
+     * 商品主图 URL（多图时与 Product.image 一致）；非表字段，列表接口按 productId 批量补全。
+     */
+    @TableField(exist = false)
+    private String productImage;
+
+    /**
+     * 商品分类名称（用于前端无图时展示分类图标）；非表字段。
+     */
+    @TableField(exist = false)
+    private String category;
+
     private String sku;
 
     private Long fromWarehouseId;

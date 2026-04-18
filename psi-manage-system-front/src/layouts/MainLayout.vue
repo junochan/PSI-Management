@@ -149,7 +149,7 @@ const dataStore = useDataStore()
 
 const navMenus = computed(() => navigationStore.menus || [])
 
-// 仅在有「用户管理」权限时拉全量用户（供顶栏与设置页）；避免仅有仪表盘等权限时请求 /users/all 被 403
+// 有「用户管理」权限时拉当前用户详情（供顶栏资料区合并展示）；避免无权限时请求用户接口被 403
 onMounted(async () => {
   if (userStore.hasPermission('settings:user')) {
     await dataStore.loadUsers()

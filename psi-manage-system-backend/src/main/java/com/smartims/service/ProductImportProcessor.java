@@ -21,9 +21,11 @@ import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * 异步解析 Excel 并逐条调用 {@link ProductService#addProduct(ProductDTO)}
@@ -94,6 +96,8 @@ public class ProductImportProcessor {
             List<String> errors = new ArrayList<>();
             int ok = 0;
             int fail = 0;
+            int skippedDuplicate = 0;
+            Set<String> seenRowSignatures = new HashSet<>();
 
             for (int r = 1; r <= lastRow; r++) {
                 Row row = sheet.getRow(r);
@@ -101,6 +105,11 @@ public class ProductImportProcessor {
                     continue;
                 }
                 int excelRow = r + 1;
+                String rowSig = importRowSignature(row, colIndex, formatter);
+                if (!seenRowSignatures.add(rowSig)) {
+                    skippedDuplicate++;
+                    continue;
+                }
                 try {
                     ProductDTO dto = buildDto(row, colIndex, formatter);
                     productService.addProduct(dto);
@@ -120,19 +129,20 @@ public class ProductImportProcessor {
                 return;
             }
             done.setStatus(ProductImportTaskStatus.COMPLETED);
-            done.setTotalRows(ok + fail);
+            done.setTotalRows(ok + fail + skippedDuplicate);
             done.setSuccessCount(ok);
             done.setFailCount(fail);
             done.setErrors(errors);
             done.setFinishedAt(LocalDateTime.now());
+            String dupHint = skippedDuplicate > 0 ? "，已跳过同文件完全重复行 " + skippedDuplicate + " 条" : "";
             if (ok == 0 && fail == 0) {
                 done.setMessage("未解析到有效数据行（请确认从第 2 行起填写，且表头未被改动）");
             } else if (fail == 0) {
-                done.setMessage("导入完成，成功 " + ok + " 条");
+                done.setMessage("导入完成，成功 " + ok + " 条" + dupHint);
             } else if (ok == 0) {
-                done.setMessage("导入结束，全部失败 " + fail + " 条");
+                done.setMessage("导入结束，全部失败 " + fail + " 条" + dupHint);
             } else {
-                done.setMessage("导入结束，成功 " + ok + " 条，失败 " + fail + " 条");
+                done.setMessage("导入结束，成功 " + ok + " 条，失败 " + fail + " 条" + dupHint);
             }
             taskRegistry.update(jobId, done);
         } catch (Exception e) {
@@ -171,6 +181,40 @@ public class ProductImportProcessor {
             }
         }
         return true;
+    }
+
+    /**
+     * 与模板列一致的业务签名：所有列（含商品编码）规范化后与 {@link #buildDto} 语义对齐，
+     * 用于同文件内「每列内容完全相同」的重复行只导入一次。
+     */
+    private String importRowSignature(Row row, Map<String, Integer> colIndex, DataFormatter formatter) {
+        StringBuilder sb = new StringBuilder();
+        for (String h : HEADERS) {
+            sb.append('\u0001');
+            switch (h) {
+                case "成本价":
+                case "销售价":
+                    BigDecimal d = cellDecimal(row, colIndex, h, formatter);
+                    sb.append(d == null ? "" : d.stripTrailingZeros().toPlainString());
+                    break;
+                case "状态":
+                    String statusRaw = cellStr(row, colIndex, "状态", formatter);
+                    sb.append("停售".equals(statusRaw) ? "停售" : "在售");
+                    break;
+                case "安全库存":
+                case "初始库存":
+                    Integer vi = cellInt(row, colIndex, h, formatter);
+                    sb.append(vi == null ? "" : vi.toString());
+                    break;
+                case "入库仓库ID":
+                    Long vl = cellLong(row, colIndex, h, formatter);
+                    sb.append(vl == null ? "" : vl.toString());
+                    break;
+                default:
+                    sb.append(cellStr(row, colIndex, h, formatter));
+            }
+        }
+        return sb.toString();
     }
 
     private ProductDTO buildDto(Row row, Map<String, Integer> colIndex, DataFormatter formatter) {

@@ -1,5 +1,5 @@
 <template>
-  <div class="customer-detail">
+  <div class="customer-detail" v-loading="pageLoading" element-loading-text="加载中...">
     <el-card>
       <template #header>
         <div class="card-header">
@@ -15,7 +15,9 @@
         <el-descriptions-item label="客户类型">
           <el-tag :type="customer?.type === '企业' ? 'warning' : 'info'" effect="light">{{ customer?.type }}</el-tag>
         </el-descriptions-item>
-        <el-descriptions-item label="联系电话">{{ customer?.phone }}</el-descriptions-item>
+        <el-descriptions-item label="联系人">{{ customer?.contact || '-' }}</el-descriptions-item>
+        <el-descriptions-item label="联系电话">{{ customer?.phone || '-' }}</el-descriptions-item>
+        <el-descriptions-item label="邮箱" :span="2">{{ customer?.email || '-' }}</el-descriptions-item>
         <el-descriptions-item label="收货地址" :span="2">{{ customer?.address }}</el-descriptions-item>
         <el-descriptions-item label="备注" :span="2">{{ customer?.remark || '-' }}</el-descriptions-item>
       </el-descriptions>
@@ -83,12 +85,21 @@
           </template>
         </el-table-column>
       </el-table>
+      <div class="pagination-wrapper">
+        <el-pagination
+          v-model:current-page="ordersCurrentPage"
+          v-model:page-size="ordersPageSize"
+          :total="ordersTotal"
+          :page-sizes="[10, 20, 50]"
+          layout="total, sizes, prev, pager, next, jumper"
+        />
+      </div>
     </el-card>
   </div>
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, watch } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { useUserStore } from '@/stores/user'
@@ -105,18 +116,21 @@ const canManageCustomer = computed(() => userStore.hasPermission('sales:customer
 
 const customerId = computed(() => route.params.id)
 const customer = ref(null)
+const pageLoading = ref(true)
 const salesOrders = ref([])
+const ordersCurrentPage = ref(1)
+const ordersPageSize = ref(10)
+const ordersTotal = ref(0)
+const ordersTotalAmount = ref(0)
 
 const customerOrders = computed(() => {
-  const cid = Number(customerId.value)
-  return (salesOrders.value || []).filter((o) => Number(o.customerId) === cid)
+  return salesOrders.value || []
 })
 
 // 消费统计 - 从订单数据计算
 const customerStats = computed(() => {
-  const orders = customerOrders.value
-  const totalOrders = orders.length
-  const totalAmount = orders.reduce((sum, o) => sum + (o.amount || 0), 0)
+  const totalOrders = ordersTotal.value
+  const totalAmount = ordersTotalAmount.value
   const avgAmount = totalOrders > 0 ? Math.round(totalAmount / totalOrders) : 0
   return { totalOrders, totalAmount, avgAmount }
 })
@@ -150,21 +164,42 @@ const getProductIcon = (productName) => {
 }
 
 onMounted(async () => {
-  const id = Number(customerId.value)
-  if (!id) {
-    ElMessage.warning('客户 ID 无效')
-    router.replace('/sales')
-    return
-  }
+  pageLoading.value = true
   try {
-    customer.value = await customerApi.get(id)
-  } catch (e) {
-    ElMessage.error(e.message || '加载客户失败')
-    router.replace('/sales')
-    return
+    const id = Number(customerId.value)
+    if (!id) {
+      ElMessage.warning('客户 ID 无效')
+      router.replace('/sales')
+      return
+    }
+    try {
+      customer.value = await customerApi.get(id)
+    } catch (e) {
+      ElMessage.error(e.message || '加载客户失败')
+      router.replace('/sales')
+      return
+    }
+    await fetchCustomerOrders()
+  } finally {
+    pageLoading.value = false
   }
-  const res = await salesApi.list({ page: 1, size: 500 })
+})
+
+const fetchCustomerOrders = async () => {
+  const id = Number(customerId.value)
+  const res = await salesApi.list({
+    page: ordersCurrentPage.value,
+    size: ordersPageSize.value,
+    customerId: id
+  })
   salesOrders.value = res.list || []
+  ordersTotal.value = Number(res.total) || 0
+  ordersTotalAmount.value =
+    Number(res.summary?.totalAmount) || (salesOrders.value || []).reduce((sum, o) => sum + (Number(o.amount) || 0), 0)
+}
+
+watch([ordersCurrentPage, ordersPageSize], () => {
+  fetchCustomerOrders()
 })
 
 const goBack = () => router.back()
@@ -197,6 +232,11 @@ const viewOrder = (row) => { router.push(`/sales/order/${row.id}`) }
 
 <style lang="scss" scoped>
 .customer-detail {
+  .pagination-wrapper {
+    display: flex;
+    justify-content: flex-end;
+    padding-top: 16px;
+  }
   .card-header {
     display: flex;
     justify-content: flex-end;
@@ -204,7 +244,7 @@ const viewOrder = (row) => { router.push(`/sales/order/${row.id}`) }
     .header-actions { display: flex; gap: 12px; }
   }
   .customer-name { font-weight: 600; color: #303133; }
-  .order-no { color: #E94560; font-family: monospace; }
+  .order-no { color: #E94560; }
   .amount { font-weight: 600; color: #E94560; }
   .stats-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; }
   .stat-item {

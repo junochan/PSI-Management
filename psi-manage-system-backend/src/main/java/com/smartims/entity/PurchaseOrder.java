@@ -58,6 +58,24 @@ public class PurchaseOrder implements Serializable {
 
     private String warehouseName;
 
+    /**
+     * 商品图片（详情聚合字段，非表字段）
+     */
+    @TableField(exist = false)
+    private String productImage;
+
+    /**
+     * 商品分类ID（详情聚合字段，非表字段）
+     */
+    @TableField(exist = false)
+    private Long categoryId;
+
+    /**
+     * 商品分类名称（详情聚合字段，非表字段）
+     */
+    @TableField(exist = false)
+    private String categoryName;
+
     private Long operatorId;
 
     private String operatorName;

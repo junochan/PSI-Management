@@ -1,7 +1,10 @@
 package com.smartims.service.impl;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+import com.smartims.common.PageResult;
 import com.smartims.dto.CategoryDTO;
+import com.smartims.dto.PageQuery;
 import com.smartims.entity.Product;
 import com.smartims.entity.SysCategory;
 import com.smartims.exception.BusinessException;
@@ -11,7 +14,6 @@ import com.smartims.service.CategoryService;
 import com.smartims.util.CodeGenerator;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.dao.DuplicateKeyException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
@@ -32,7 +34,6 @@ import java.util.List;
 public class CategoryServiceImpl implements CategoryService {
 
     private static final DateTimeFormatter CATEGORY_CODE_DATE = DateTimeFormatter.ofPattern("yyMMdd");
-    private static final int MAX_CATEGORY_CODE_ATTEMPTS = 5;
 
     private final SysCategoryMapper sysCategoryMapper;
     private final ProductMapper productMapper;
@@ -52,6 +53,23 @@ public class CategoryServiceImpl implements CategoryService {
         }
         queryWrapper.orderByAsc(SysCategory::getSort);
         return sysCategoryMapper.selectList(queryWrapper);
+    }
+
+    @Override
+    public PageResult<SysCategory> pageCategories(PageQuery pageQuery, Integer status) {
+        LambdaQueryWrapper<SysCategory> queryWrapper = new LambdaQueryWrapper<>();
+        queryWrapper.eq(SysCategory::getDeleted, 0);
+        if (status != null) {
+            queryWrapper.eq(SysCategory::getStatus, status);
+        }
+        if (StringUtils.hasText(pageQuery.getKeyword())) {
+            String kw = pageQuery.getKeyword().trim();
+            queryWrapper.and(w -> w.like(SysCategory::getName, kw).or().like(SysCategory::getCode, kw));
+        }
+        queryWrapper.orderByAsc(SysCategory::getSort);
+        Page<SysCategory> page = new Page<>(pageQuery.getPage(), pageQuery.getSize());
+        Page<SysCategory> result = sysCategoryMapper.selectPage(page, queryWrapper);
+        return PageResult.build(result.getTotal(), result.getCurrent(), result.getSize(), result.getRecords());
     }
 
     @Override
@@ -78,19 +96,9 @@ public class CategoryServiceImpl implements CategoryService {
         category.setStatus(dto.getStatus() != null ? dto.getStatus() : 1);
 
         if (!StringUtils.hasText(dto.getCode())) {
-            for (int attempt = 0; attempt < MAX_CATEGORY_CODE_ATTEMPTS; attempt++) {
-                category.setCode(allocateCategoryCode());
-                try {
-                    sysCategoryMapper.insert(category);
-                    log.info("创建分类成功：id={}, name={}, code={}", category.getId(), category.getName(), category.getCode());
-                    return;
-                } catch (DuplicateKeyException e) {
-                    log.warn("分类编码冲突，重新分配 attempt={} code={}", attempt + 1, category.getCode());
-                    if (attempt == MAX_CATEGORY_CODE_ATTEMPTS - 1) {
-                        throw new BusinessException("分类编码生成失败，请稍后重试");
-                    }
-                }
-            }
+            category.setCode(allocateCategoryCode());
+            sysCategoryMapper.insert(category);
+            log.info("创建分类成功：id={}, name={}, code={}", category.getId(), category.getName(), category.getCode());
         } else {
             String code = dto.getCode().trim();
             if (categoryCodeExists(code, null)) {

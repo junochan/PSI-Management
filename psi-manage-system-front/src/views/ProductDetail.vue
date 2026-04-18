@@ -1,5 +1,5 @@
 <template>
-  <div class="product-detail-page">
+  <div class="product-detail-page" v-loading="pageLoading" element-loading-text="加载中...">
     <el-card>
       <template #header>
         <div class="card-header">
@@ -27,13 +27,22 @@
               <el-icon v-else class="product-image-uploader-icon is-loading"><Loading /></el-icon>
             </el-upload>
           </div>
-          <div class="image-tip">最多 10 张，单张不超过 2MB；支持 JPG、PNG、GIF、WEBP；选择后自动上传，仅保存图片地址</div>
+          <div class="image-tip">至少 1 张（必填），最多 10 张；单张不超过 2MB；支持 JPG、PNG、GIF、WEBP；选择后自动上传，仅保存图片地址</div>
         </el-form-item>
         <el-form-item label="商品名称" prop="name">
           <el-input v-model="productForm.name" placeholder="输入商品名称" :maxlength="100" show-word-limit />
         </el-form-item>
         <el-row :gutter="20">
-          <el-col :span="12"><el-form-item label="商品分类" prop="categoryName"><el-select v-model="productForm.categoryName" placeholder="请选择分类" style="width: 100%" filterable><el-option v-for="c in categoriesList" :key="c.id" :label="c.name" :value="c.name" :disabled="!isCategoryEnabled(c)" /></el-select></el-form-item></el-col>
+          <el-col :span="12"><el-form-item label="商品分类" prop="categoryName"><el-select
+            v-model="productForm.categoryName"
+            v-load-more="{ popperClass: 'product-detail-category-dropdown', onLoadMore: loadMoreCategoryOptions, disabled: categoryOptionsLoading || !categoryOptionsHasMore }"
+            popper-class="product-detail-category-dropdown"
+            placeholder="请选择分类"
+            style="width: 100%"
+            filterable
+            @visible-change="onCategorySelectVisibleChange"
+            @filter-method="onCategoryFilter"
+          ><el-option v-for="c in categoryOptions" :key="c.id" :label="c.name" :value="c.name" :disabled="!isCategoryEnabled(c)" /></el-select></el-form-item></el-col>
           <el-col :span="12"><el-form-item label="商品编码"><el-input v-model="productForm.code" placeholder="系统自动生成" disabled /></el-form-item></el-col>
         </el-row>
         <el-row :gutter="20">
@@ -72,8 +81,86 @@ const route = useRoute()
 const userStore = useUserStore()
 const productFormRef = ref()
 const imageUploading = ref(false)
-/** 列表接口带 status=1；编辑时若商品挂在已禁用分类上，再合并该条以便展示 */
-const categoriesList = ref([])
+const pageLoading = ref(true)
+/** 分类下拉：分页 + 触底加载（与库存页一致） */
+const FILTER_DROPDOWN_PAGE_SIZE = 10
+const categoryOptions = ref([])
+const categoryOptionsPage = ref(0)
+const categoryOptionsTotal = ref(0)
+const categoryOptionsKeyword = ref('')
+const categoryOptionsLoading = ref(false)
+const categoryOptionsHasMore = computed(() => categoryOptions.value.length < categoryOptionsTotal.value)
+
+const mergeOptionsById = (base, extra) => {
+  const map = new Map()
+  ;(base || []).forEach((item) => {
+    if (item?.id != null) map.set(item.id, item)
+  })
+  ;(extra || []).forEach((item) => {
+    if (item?.id != null) map.set(item.id, item)
+  })
+  return Array.from(map.values())
+}
+
+const loadMoreCategoryOptions = async ({ reset = false, keyword = null } = {}) => {
+  if (categoryOptionsLoading.value) return
+  if (reset) {
+    categoryOptions.value = []
+    categoryOptionsPage.value = 0
+    categoryOptionsTotal.value = 0
+    categoryOptionsKeyword.value = keyword ?? ''
+  } else if (!categoryOptionsHasMore.value && categoryOptionsPage.value > 0) {
+    return
+  }
+  categoryOptionsLoading.value = true
+  try {
+    const nextPage = categoryOptionsPage.value + 1
+    const res = await categoryApi.listPage({
+      page: nextPage,
+      size: FILTER_DROPDOWN_PAGE_SIZE,
+      status: CATEGORY_STATUS.ENABLED,
+      keyword: categoryOptionsKeyword.value || undefined
+    })
+    const rows = res?.list || []
+    categoryOptions.value = mergeOptionsById(categoryOptions.value, rows)
+    categoryOptionsPage.value = nextPage
+    categoryOptionsTotal.value = Number(res?.total) || categoryOptions.value.length
+    if (rows.length < FILTER_DROPDOWN_PAGE_SIZE) {
+      categoryOptionsTotal.value = categoryOptions.value.length
+    }
+  } finally {
+    categoryOptionsLoading.value = false
+  }
+}
+
+const mergeCategoryByName = async (name) => {
+  if (!name) return
+  if (categoryOptions.value.some((c) => c.name === name)) return
+  try {
+    const res = await categoryApi.listPage({
+      page: 1,
+      size: 50,
+      status: CATEGORY_STATUS.ENABLED,
+      keyword: name
+    })
+    const rows = (res?.list || []).filter((c) => c.name === name)
+    if (rows.length) categoryOptions.value = mergeOptionsById(categoryOptions.value, rows)
+  } catch {
+    /* ignore */
+  }
+}
+
+const onCategorySelectVisibleChange = async (visible) => {
+  if (!visible) return
+  if (categoryOptions.value.length === 0) {
+    await loadMoreCategoryOptions({ reset: true, keyword: '' })
+  }
+  if (productForm.value.categoryName) await mergeCategoryByName(productForm.value.categoryName)
+}
+
+const onCategoryFilter = (keyword) => {
+  loadMoreCategoryOptions({ reset: true, keyword: keyword || '' })
+}
 
 const productId = computed(() => route.params.id)
 const editMode = computed(() => !!productId.value)
@@ -92,12 +179,14 @@ const productForm = ref({
 const productRules = {
   imageList: [
     {
+      required: true,
+      message: '请至少上传 1 张商品图片',
       validator: (_, v, cb) => {
         if (!v?.length) cb(new Error('请至少上传 1 张商品图片'))
         else if (v.length > 10) cb(new Error('商品图片最多 10 张'))
         else cb()
       },
-      trigger: 'change'
+      trigger: ['change', 'blur']
     }
   ],
   name: [
@@ -143,53 +232,57 @@ const removeProductImage = (index) => {
 }
 
 onMounted(async () => {
-  if (!editMode.value && !userStore.hasPermission('product:add')) {
-    ElMessage.warning('无添加商品权限')
-    router.replace('/products')
-    return
-  }
-  if (editMode.value && !userStore.hasPermission('product:edit')) {
-    ElMessage.warning('无编辑商品权限')
-    router.replace(`/products/view/${productId.value}`)
-    return
-  }
-  const enabledRes = await categoryApi.list({ status: CATEGORY_STATUS.ENABLED })
-  categoriesList.value = Array.isArray(enabledRes) ? [...enabledRes] : []
-  if (editMode.value) {
-    const id = Number(productId.value)
-    if (!id) {
-      ElMessage.warning('商品 ID 无效')
+  pageLoading.value = true
+  try {
+    if (!editMode.value && !userStore.hasPermission('product:add')) {
+      ElMessage.warning('无添加商品权限')
       router.replace('/products')
       return
     }
-    try {
-      const product = await productApi.get(id)
-      productForm.value = {
-        name: product.name,
-        categoryName: product.categoryName || product.category,
-        brand: product.brand,
-        spec: product.spec,
-        costPrice: product.costPrice,
-        salePrice: product.salePrice,
-        status: product.status || '在售',
-        description: product.description || '',
-        imageList: parseProductImageUrls(product.image),
-        code: product.code
-      }
-      if (product.categoryId != null) {
-        try {
-          const catRow = await categoryApi.get(product.categoryId)
-          if (catRow && !isCategoryEnabled(catRow) && !categoriesList.value.some((c) => c.id === catRow.id)) {
-            categoriesList.value = [catRow, ...categoriesList.value]
-          }
-        } catch {
-          /* 分类详情失败不影响主流程 */
-        }
-      }
-    } catch (e) {
-      ElMessage.error(e.message || '加载商品失败')
-      router.replace('/products')
+    if (editMode.value && !userStore.hasPermission('product:edit')) {
+      ElMessage.warning('无编辑商品权限')
+      router.replace(`/products/view/${productId.value}`)
+      return
     }
+    if (editMode.value) {
+      const id = Number(productId.value)
+      if (!id) {
+        ElMessage.warning('商品 ID 无效')
+        router.replace('/products')
+        return
+      }
+      try {
+        const product = await productApi.get(id)
+        productForm.value = {
+          name: product.name,
+          categoryName: product.categoryName || product.category,
+          brand: product.brand,
+          spec: product.spec,
+          costPrice: product.costPrice,
+          salePrice: product.salePrice,
+          status: product.status || '在售',
+          description: product.description || '',
+          imageList: parseProductImageUrls(product.image),
+          code: product.code
+        }
+        if (product.categoryId != null) {
+          try {
+            const catRow = await categoryApi.get(product.categoryId)
+            if (catRow && !isCategoryEnabled(catRow) && !categoryOptions.value.some((c) => c.id === catRow.id)) {
+              categoryOptions.value = [catRow, ...categoryOptions.value]
+            }
+          } catch {
+            /* 分类详情失败不影响主流程 */
+          }
+        }
+        await mergeCategoryByName(productForm.value.categoryName)
+      } catch (e) {
+        ElMessage.error(e.message || '加载商品失败')
+        router.replace('/products')
+      }
+    }
+  } finally {
+    pageLoading.value = false
   }
 })
 
@@ -199,7 +292,8 @@ const submitProduct = async () => {
   await productFormRef.value.validate(async (valid) => {
     if (valid) {
       try {
-        const category = (categoriesList.value || []).find(c => c.name === productForm.value.categoryName)
+        await mergeCategoryByName(productForm.value.categoryName)
+        const category = categoryOptions.value.find((c) => c.name === productForm.value.categoryName)
         const productDTO = {
           code: productForm.value.code || `P${Date.now()}`,
           name: productForm.value.name,

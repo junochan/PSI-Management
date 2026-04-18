@@ -1,6 +1,9 @@
 package com.smartims.service.impl;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+import com.smartims.common.PageResult;
+import com.smartims.dto.PageQuery;
 import com.smartims.dto.RoleDTO;
 import com.smartims.entity.SysRole;
 import com.smartims.entity.SysPermission;
@@ -14,6 +17,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.util.StringUtils;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -40,6 +44,24 @@ public class RoleServiceImpl implements RoleService {
         queryWrapper.eq(SysRole::getDeleted, 0);
         queryWrapper.orderByAsc(SysRole::getId);
         return sysRoleMapper.selectList(queryWrapper);
+    }
+
+    @Override
+    public PageResult<SysRole> getRolePage(PageQuery pageQuery) {
+        LambdaQueryWrapper<SysRole> queryWrapper = new LambdaQueryWrapper<>();
+        queryWrapper.eq(SysRole::getDeleted, 0);
+        if (StringUtils.hasText(pageQuery.getKeyword())) {
+            String kw = pageQuery.getKeyword().trim();
+            queryWrapper.and(w -> w.like(SysRole::getName, kw)
+                    .or()
+                    .like(SysRole::getCode, kw)
+                    .or()
+                    .like(SysRole::getDescription, kw));
+        }
+        queryWrapper.orderByAsc(SysRole::getId);
+        Page<SysRole> page = new Page<>(pageQuery.getPage(), pageQuery.getSize());
+        Page<SysRole> result = sysRoleMapper.selectPage(page, queryWrapper);
+        return PageResult.build(result.getTotal(), pageQuery.getPage(), pageQuery.getSize(), result.getRecords());
     }
 
     @Override

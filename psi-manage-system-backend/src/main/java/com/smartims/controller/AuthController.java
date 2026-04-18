@@ -9,6 +9,7 @@ import com.smartims.service.AuthService;
 import com.smartims.service.NavigationService;
 import com.smartims.vo.LoginVO;
 import com.smartims.vo.NavigationVO;
+import com.smartims.vo.TokenRefreshVO;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
@@ -49,6 +50,13 @@ public class AuthController {
     public Result<Void> logout() {
         authService.logout();
         return Result.success("登出成功");
+    }
+
+    @Operation(summary = "刷新当前登录用户 token")
+    @PostMapping("/refresh")
+    public Result<TokenRefreshVO> refreshToken() {
+        String token = authService.refreshToken();
+        return Result.success("续期成功", new TokenRefreshVO(token));
     }
 
     @Operation(summary = "当前用户导航（菜单树、权限码、前端路由表）")

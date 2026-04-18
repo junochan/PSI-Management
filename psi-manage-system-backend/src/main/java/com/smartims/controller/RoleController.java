@@ -1,7 +1,9 @@
 package com.smartims.controller;
 
 import com.smartims.annotation.OperationLog;
+import com.smartims.common.PageResult;
 import com.smartims.common.Result;
+import com.smartims.dto.PageQuery;
 import com.smartims.dto.RoleDTO;
 import com.smartims.entity.SysRole;
 import com.smartims.entity.SysPermission;
@@ -32,6 +34,12 @@ public class RoleController {
     public Result<List<SysRole>> getAllRoles() {
         List<SysRole> roles = roleService.getAllRoles();
         return Result.success(roles);
+    }
+
+    @Operation(summary = "分页查询角色列表", description = "keyword：名称、编码或描述模糊匹配")
+    @GetMapping("/page")
+    public Result<PageResult<SysRole>> getRolePage(PageQuery pageQuery) {
+        return Result.success(roleService.getRolePage(pageQuery));
     }
 
     @Operation(summary = "获取角色详情")

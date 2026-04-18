@@ -1,7 +1,9 @@
 package com.smartims.controller;
 
 import com.smartims.annotation.OperationLog;
+import com.smartims.common.PageResult;
 import com.smartims.common.Result;
+import com.smartims.dto.PageQuery;
 import com.smartims.dto.CategoryDTO;
 import com.smartims.entity.SysCategory;
 import com.smartims.service.CategoryService;
@@ -35,6 +37,14 @@ public class CategoryController {
             @RequestParam(required = false) String code) {
         List<SysCategory> categories = categoryService.listCategories(status, name, code);
         return Result.success(categories);
+    }
+
+    @Operation(summary = "分页获取分类列表", description = "keyword：名称或编码模糊；status：1 启用 0 禁用，不传则不过滤状态")
+    @GetMapping("/page")
+    public Result<PageResult<SysCategory>> pageCategories(
+            PageQuery pageQuery,
+            @RequestParam(required = false) Integer status) {
+        return Result.success(categoryService.pageCategories(pageQuery, status));
     }
 
     @Operation(summary = "获取分类详情")

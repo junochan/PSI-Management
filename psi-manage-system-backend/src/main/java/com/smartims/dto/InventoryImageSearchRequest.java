@@ -19,7 +19,7 @@ public class InventoryImageSearchRequest implements Serializable {
     private Long page = 1L;
 
     @Min(value = 1, message = "每页数量最小值为1")
-    @Max(value = 100, message = "每页数量最大值为100")
+    @Max(value = 5000, message = "每页数量最大值为5000")
     private Long size = 10L;
 
     private String keyword;

@@ -1,12 +1,22 @@
 <template>
   <div class="products-page">
     <!-- 商品列表 -->
-    <el-card class="table-card">
+    <el-card class="table-card" v-loading="productsCardLoading" element-loading-text="加载中...">
       <template #header>
         <div class="card-header">
           <div class="header-actions">
-            <el-select v-model="filterCategory" class="filter-control filter-category" placeholder="按分类筛选" clearable filterable>
-              <el-option v-for="c in categoriesList" :key="c.id" :label="c.name" :value="c.name" />
+            <el-select
+              v-model="filterCategory"
+              v-load-more="{ popperClass: 'products-filter-category-dropdown', onLoadMore: loadMoreCategoryOptions, disabled: categoryOptionsLoading || !categoryOptionsHasMore }"
+              popper-class="products-filter-category-dropdown"
+              class="filter-control filter-category"
+              placeholder="按分类筛选"
+              clearable
+              filterable
+              @visible-change="onCategoryFilterVisibleChange"
+              @filter-method="onCategoryFilter"
+            >
+              <el-option v-for="c in categoryOptions" :key="c.id" :label="c.name" :value="c.name" />
             </el-select>
             <el-select v-model="filterStatus" class="filter-control filter-status" placeholder="按状态筛选" clearable filterable>
               <el-option label="在售" value="在售" />
@@ -62,7 +72,15 @@
         <el-table-column label="图片" width="76" align="center" fixed="left">
           <template #default="{ row }">
             <div class="product-image-cell">
-              <img v-if="firstProductImageUrl(row.image)" :src="firstProductImageUrl(row.image)" alt="商品图片" class="product-thumb-list" />
+              <ProductImageThumb
+                v-if="firstProductImageUrl(row.image)"
+                :src="firstProductImageUrl(row.image)"
+                :preview-src-list="parseProductImageUrls(row.image)"
+                class="product-thumb-list"
+                :width="50"
+                :height="50"
+                :radius="6"
+              />
               <span v-else class="product-icon-placeholder">{{ getProductIcon(row.categoryName || row.category) }}</span>
             </div>
           </template>
@@ -166,8 +184,17 @@
         <el-row :gutter="20">
           <el-col :span="12">
             <el-form-item label="商品分类" prop="categoryName">
-              <el-select v-model="productForm.categoryName" placeholder="请选择分类" style="width: 100%" filterable>
-                <el-option v-for="c in categoriesList" :key="c.id" :label="c.name" :value="c.name" />
+              <el-select
+                v-model="productForm.categoryName"
+                v-load-more="{ popperClass: 'products-form-category-dropdown', onLoadMore: loadMoreCategoryOptions, disabled: categoryOptionsLoading || !categoryOptionsHasMore }"
+                popper-class="products-form-category-dropdown"
+                placeholder="请选择分类"
+                style="width: 100%"
+                filterable
+                @visible-change="onCategoryFormVisibleChange"
+                @filter-method="onCategoryFilter"
+              >
+                <el-option v-for="c in categoryOptions" :key="c.id" :label="c.name" :value="c.name" />
               </el-select>
             </el-form-item>
           </el-col>
@@ -262,6 +289,7 @@
         <span class="import-template-hint">请使用模板表头填写，勿改列名；详见模板内「填写说明」工作表</span>
       </div>
       <el-upload
+        ref="productImportUploadRef"
         drag
         action="#"
         :auto-upload="false"
@@ -287,19 +315,19 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted, onBeforeUnmount, watch } from 'vue'
+import { ref, computed, onMounted, onBeforeUnmount, watch, nextTick } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { useDataStore } from '@/stores/data'
 import { useUserStore } from '@/stores/user'
-import { productApi } from '@/api'
+import { productApi, categoryApi, CATEGORY_STATUS } from '@/api'
 import * as XLSX from 'xlsx'
+import JSZip from 'jszip'
+import ProductImageThumb from '@/components/ProductImageThumb.vue'
 import { parseProductImageUrls, firstProductImageUrl, encodeProductImagesForApi } from '@/utils/productImages'
 import { MAX_IMAGE_UPLOAD_BYTES } from '@/utils/uploadLimits'
 import { formatAmountDisplay } from '@/utils/moneyFormat'
 
 const router = useRouter()
-const dataStore = useDataStore()
 const userStore = useUserStore()
 
 /** 仅商品查看或更高操作权限（用于列表、导出、以图搜图等） */
@@ -332,13 +360,101 @@ const editMode = ref(false)
 const productFormRef = ref()
 const currentProduct = ref(null)
 const uploadFile = ref(null)
+const productImportUploadRef = ref(null)
 const importLoading = ref(false)
 const loading = ref(false)
+const productsCardLoading = computed(() => loading.value || imageSearchLoading.value)
 const imageUploading = ref(false)
 const viewportWidth = ref(typeof window !== 'undefined' ? window.innerWidth : 1440)
 const viewportHeight = ref(typeof window !== 'undefined' ? window.innerHeight : 900)
 
-const categoriesList = computed(() => dataStore.categories || [])
+/** 分类下拉：分页 + 触底加载，与库存页商品/仓库下拉一致 */
+const FILTER_DROPDOWN_PAGE_SIZE = 10
+const categoryOptions = ref([])
+const categoryOptionsPage = ref(0)
+const categoryOptionsTotal = ref(0)
+const categoryOptionsKeyword = ref('')
+const categoryOptionsLoading = ref(false)
+const categoryOptionsHasMore = computed(() => categoryOptions.value.length < categoryOptionsTotal.value)
+
+const mergeOptionsById = (base, extra) => {
+  const map = new Map()
+  ;(base || []).forEach((item) => {
+    if (item?.id != null) map.set(item.id, item)
+  })
+  ;(extra || []).forEach((item) => {
+    if (item?.id != null) map.set(item.id, item)
+  })
+  return Array.from(map.values())
+}
+
+const loadMoreCategoryOptions = async ({ reset = false, keyword = null } = {}) => {
+  if (categoryOptionsLoading.value) return
+  if (reset) {
+    categoryOptions.value = []
+    categoryOptionsPage.value = 0
+    categoryOptionsTotal.value = 0
+    categoryOptionsKeyword.value = keyword ?? ''
+  } else if (!categoryOptionsHasMore.value && categoryOptionsPage.value > 0) {
+    return
+  }
+  categoryOptionsLoading.value = true
+  try {
+    const nextPage = categoryOptionsPage.value + 1
+    const res = await categoryApi.listPage({
+      page: nextPage,
+      size: FILTER_DROPDOWN_PAGE_SIZE,
+      status: CATEGORY_STATUS.ENABLED,
+      keyword: categoryOptionsKeyword.value || undefined
+    })
+    const rows = res?.list || []
+    categoryOptions.value = mergeOptionsById(categoryOptions.value, rows)
+    categoryOptionsPage.value = nextPage
+    categoryOptionsTotal.value = Number(res?.total) || categoryOptions.value.length
+    if (rows.length < FILTER_DROPDOWN_PAGE_SIZE) {
+      categoryOptionsTotal.value = categoryOptions.value.length
+    }
+  } finally {
+    categoryOptionsLoading.value = false
+  }
+}
+
+const mergeCategoryByName = async (name) => {
+  if (!name) return
+  if (categoryOptions.value.some((c) => c.name === name)) return
+  try {
+    const res = await categoryApi.listPage({
+      page: 1,
+      size: 50,
+      status: CATEGORY_STATUS.ENABLED,
+      keyword: name
+    })
+    const rows = (res?.list || []).filter((c) => c.name === name)
+    if (rows.length) categoryOptions.value = mergeOptionsById(categoryOptions.value, rows)
+  } catch {
+    /* ignore */
+  }
+}
+
+const onCategoryFilterVisibleChange = async (visible) => {
+  if (!visible) return
+  if (categoryOptions.value.length === 0) {
+    await loadMoreCategoryOptions({ reset: true, keyword: '' })
+  }
+  if (filterCategory.value) await mergeCategoryByName(filterCategory.value)
+}
+
+const onCategoryFormVisibleChange = async (visible) => {
+  if (!visible) return
+  if (categoryOptions.value.length === 0) {
+    await loadMoreCategoryOptions({ reset: true, keyword: '' })
+  }
+  if (productForm.value.categoryName) await mergeCategoryByName(productForm.value.categoryName)
+}
+
+const onCategoryFilter = (keyword) => {
+  loadMoreCategoryOptions({ reset: true, keyword: keyword || '' })
+}
 const tableMaxHeight = computed(() => {
   return Math.max(320, Math.min(700, viewportHeight.value - 320))
 })
@@ -387,10 +503,8 @@ const fetchProducts = async () => {
   }
 }
 
-// 加载分类 + 同步 store 商品（供其他模块）+ 当前列表
+// 加载当前页商品列表（分类下拉改为打开时按需分页加载）
 const loadProducts = async () => {
-  await dataStore.loadCategories()
-  await dataStore.loadProducts()
   await fetchProducts()
 }
 
@@ -412,18 +526,8 @@ watch([filterCategory, filterStatus, searchKeyword], () => {
   fetchProducts()
 })
 
-/** 分类被禁用后，筛选项若仍指向该名称则清空，避免无效筛选 */
-watch([categoriesList, filterCategory], () => {
-  const f = filterCategory.value
-  if (!f) return
-  if (!categoriesList.value.some((c) => c.name === f)) {
-    filterCategory.value = null
-  }
-})
-
-watch([currentPage, pageSize], () => {
-  if (!imageSearchMode.value) fetchProducts()
-})
+// 分页加载仅由 el-pagination 的 @current-change / @size-change 触发。
+// 若再 watch currentPage：会与 v-model 更新叠加，导致翻页请求 /products 调用两次。
 
 const onProductQueryImageChange = (uploadFile) => {
   const raw = uploadFile?.raw
@@ -679,8 +783,8 @@ const submitProduct = async () => {
       }
       loading.value = true
       try {
-        // 构造后端需要的DTO格式
-        const category = categoriesList.value.find(c => c.name === productForm.value.categoryName)
+        await mergeCategoryByName(productForm.value.categoryName)
+        const category = categoryOptions.value.find((c) => c.name === productForm.value.categoryName)
         const productDTO = {
           code: productForm.value.code || `P${Date.now()}`,
           name: productForm.value.name,
@@ -765,6 +869,7 @@ const downloadProductImportTemplate = () => {
     ['入库仓库ID：须为系统中已存在仓库的数字 ID，可与「仓库管理」对照。'],
     [''],
     ['三、格式要求'],
+    ['同文件中若多行各列内容完全相同（含商品编码），仅导入第一条，其余重复行自动跳过。'],
     ['请勿修改首行表头文字或列顺序；从第 2 行起逐行填写一条商品。'],
     ['建议直接使用本模板保存为 .xlsx 后再填写，勿在表头行插入或合并单元格。']
   ]
@@ -787,13 +892,9 @@ const handleImport = async () => {
   }
   uploadFile.value = null
   importLoading.value = false
-  try {
-    await dataStore.loadCategories()
-  } catch (e) {
-    ElMessage.error(e.message || '加载商品分类失败，请稍后重试')
-    return
-  }
   importDialogVisible.value = true
+  await nextTick()
+  productImportUploadRef.value?.clearFiles()
 }
 
 const handleFileChange = (file) => {
@@ -874,6 +975,8 @@ const executeImport = async () => {
 
     importDialogVisible.value = false
     uploadFile.value = null
+    await nextTick()
+    productImportUploadRef.value?.clearFiles()
   } catch (e) {
     ElMessage.error(e.message || '导入失败')
   } finally {
@@ -881,27 +984,40 @@ const executeImport = async () => {
   }
 }
 
-// 批量导出 - 按当前筛选条件拉取后导出
+// 批量导出 - 普通列表按筛选拉取；以图搜图则按当前查询图与阈值导出图搜命中结果（与列表同上限）
 const handleExport = async () => {
   if (!canProductRead.value) {
     ElMessage.warning('无商品数据查看权限')
     return
   }
-  if (imageSearchMode.value) {
-    ElMessage.warning('请先退出以图搜图后再导出')
+  if (imageSearchMode.value && !queryImageDataUrl.value) {
+    ElMessage.warning('查询图片已失效，请重新以图搜图后再导出')
     return
   }
   loading.value = true
   let rows = []
   try {
-    const res = await productApi.list({
-      page: 1,
-      size: 5000,
-      keyword: searchKeyword.value || undefined,
-      categoryName: filterCategory.value || undefined,
-      productStatus: filterStatus.value || undefined
-    })
-    rows = res.list || []
+    if (imageSearchMode.value) {
+      const res = await productApi.searchByImage({
+        page: 1,
+        size: 5000,
+        keyword: searchKeyword.value || undefined,
+        categoryName: filterCategory.value || undefined,
+        status: filterStatus.value || undefined,
+        imageBase64: queryImageDataUrl.value,
+        similarityThreshold: imageSimilarityThreshold.value
+      })
+      rows = res.list || []
+    } else {
+      const res = await productApi.list({
+        page: 1,
+        size: 5000,
+        keyword: searchKeyword.value || undefined,
+        categoryName: filterCategory.value || undefined,
+        productStatus: filterStatus.value || undefined
+      })
+      rows = res.list || []
+    }
   } catch (e) {
     ElMessage.error(e.message || '获取导出数据失败')
     return
@@ -913,35 +1029,203 @@ const handleExport = async () => {
     return
   }
 
-  // 准备导出数据 - 每个字段对应Excel的一列
-  const exportData = rows.map(p => ({
-    '编码': p.code || '',
-    '商品信息': p.name || '',
-    '分类': p.categoryName || p.category || '',
-    '成本': p.costPrice || 0,
-    '售价': p.salePrice || 0
-  }))
+  const formatExportDateTime = (v) => {
+    if (v == null || v === '') return ''
+    const s = typeof v === 'string' ? v : String(v)
+    return s.replace('T', ' ').replace(/\.\d{3}Z?$/, '').trim()
+  }
 
-  // 创建工作表
+  const resolveAbsoluteImageUrl = (url) => {
+    const u = String(url || '').trim()
+    if (!u) return ''
+    if (/^https?:\/\//i.test(u)) return u
+    if (u.startsWith('/')) return `${window.location.origin}${u}`
+    return `${window.location.origin}/${u}`
+  }
+
+  const extFromImageUrl = (url) => {
+    const s = String(url).split('?')[0].toLowerCase()
+    const m = s.match(/\.(jpe?g|png|gif|webp)$/)
+    if (m) return m[1] === 'jpeg' ? 'jpg' : m[1]
+    return ''
+  }
+
+  const extFromBlob = (blob, url) => {
+    const t = (blob && blob.type) || ''
+    if (t.includes('png')) return 'png'
+    if (t.includes('gif')) return 'gif'
+    if (t.includes('webp')) return 'webp'
+    if (t.includes('jpeg') || t.includes('jpg')) return 'jpg'
+    const fromUrl = extFromImageUrl(url)
+    return fromUrl || 'jpg'
+  }
+
+  const safeImageBaseName = (p) => {
+    const raw = (p.code && String(p.code).trim()) || `id_${p.id}`
+    const cleaned = raw.replace(/[\\/:*?"<>|]+/g, '_').trim() || `id_${p.id}`
+    return cleaned.slice(0, 72)
+  }
+
+  const loadImageBlob = async (url) => {
+    const u = String(url || '').trim()
+    if (!u) throw new Error('empty')
+    if (u.startsWith('data:image')) {
+      const res = await fetch(u)
+      if (!res.ok) throw new Error('data-url')
+      return res.blob()
+    }
+    const abs = resolveAbsoluteImageUrl(u)
+    const token = localStorage.getItem('token')
+    const res = await fetch(abs, {
+      headers: token ? { Authorization: `Bearer ${token}` } : {}
+    })
+    if (!res.ok) throw new Error(String(res.status))
+    return res.blob()
+  }
+
+  const runPool = async (items, limit, fn) => {
+    const results = new Array(items.length)
+    let cursor = 0
+    const worker = async () => {
+      while (true) {
+        const i = cursor++
+        if (i >= items.length) break
+        results[i] = await fn(items[i], i)
+      }
+    }
+    const n = Math.min(Math.max(limit, 1), Math.max(items.length, 1))
+    await Promise.all(Array.from({ length: n }, () => worker()))
+    return results
+  }
+
+  const zip = new JSZip()
+  const imageTasks = []
+  for (const p of rows) {
+    const urls = parseProductImageUrls(p?.image)
+    urls.forEach((url, idx) => {
+      imageTasks.push({ p, idx, url })
+    })
+  }
+
+  const byProduct = new Map()
+  for (const p of rows) {
+    byProduct.set(p.id, { paths: [], fails: [] })
+  }
+
+  loading.value = true
+  try {
+    await runPool(imageTasks, 6, async ({ p, idx, url }) => {
+      const slot = byProduct.get(p.id)
+      const base = safeImageBaseName(p)
+      const fileBase = `${base}_pid${p.id}_${idx}`
+      try {
+        const blob = await loadImageBlob(url)
+        const ext = extFromBlob(blob, url)
+        const relPath = `images/${fileBase}.${ext}`
+        zip.file(relPath, blob)
+        slot.paths.push(relPath)
+      } catch {
+        slot.fails.push(url)
+      }
+    })
+  } catch (e) {
+    ElMessage.error(e.message || '打包商品图片失败')
+    return
+  } finally {
+    loading.value = false
+  }
+
+  let okImg = 0
+  let failImg = 0
+  for (const v of byProduct.values()) {
+    okImg += v.paths.length
+    failImg += v.fails.length
+  }
+
+  // 与商品实体及详情一致；图片为 zip 内实际文件路径（非仅 URL）
+  const exportData = rows.map((p) => {
+    const img = byProduct.get(p.id) || { paths: [], fails: [] }
+    return {
+      主键ID: p.id ?? '',
+      商品编码: p.code || '',
+      商品名称: p.name || '',
+      品牌: p.brand || '',
+      规格: p.spec || '',
+      分类ID: p.categoryId ?? '',
+      分类名称: p.categoryName || p.category || '',
+      成本价: p.costPrice ?? '',
+      销售价: p.salePrice ?? '',
+      状态: p.statusName || formatProductStatus(p.status),
+      商品图片文件: img.paths.join('; '),
+      商品描述: p.description || '',
+      库存数量: p.stock ?? '',
+      安全库存: p.safeStock ?? '',
+      创建时间: formatExportDateTime(p.createTime),
+      更新时间: formatExportDateTime(p.updateTime)
+    }
+  })
+
   const worksheet = XLSX.utils.json_to_sheet(exportData)
-
-  // 设置列宽
   worksheet['!cols'] = [
-    { wch: 12 },  // 编码
-    { wch: 30 },  // 商品信息
-    { wch: 15 },  // 分类
-    { wch: 12 },  // 成本
-    { wch: 12 }   // 售价
+    { wch: 10 },
+    { wch: 14 },
+    { wch: 28 },
+    { wch: 12 },
+    { wch: 16 },
+    { wch: 10 },
+    { wch: 14 },
+    { wch: 10 },
+    { wch: 10 },
+    { wch: 10 },
+    { wch: 44 },
+    { wch: 40 },
+    { wch: 10 },
+    { wch: 10 },
+    { wch: 20 },
+    { wch: 20 }
   ]
 
-  // 创建工作簿
   const workbook = XLSX.utils.book_new()
   XLSX.utils.book_append_sheet(workbook, worksheet, '商品列表')
+  const xlsxArray = XLSX.write(workbook, { type: 'array', bookType: 'xlsx' })
+  zip.file('商品列表.xlsx', xlsxArray)
 
-  // 导出Excel文件
-  XLSX.writeFile(workbook, `商品列表_${new Date().toISOString().slice(0,10)}.xlsx`)
+  if (failImg > 0) {
+    const lines = ['商品编码/标识\t失败URL']
+    for (const p of rows) {
+      const fails = byProduct.get(p.id)?.fails || []
+      const label = (p.code && String(p.code).trim()) || `id_${p.id}`
+      for (const u of fails) {
+        lines.push(`${label}\t${u}`)
+      }
+    }
+    lines.unshift('以下为浏览器未能拉取并写入压缩包的图片地址，可与网络/跨域/外链权限对照排查：')
+    zip.file('图片下载失败明细.txt', lines.join('\n'))
+  }
 
-  ElMessage.success(`已导出 ${exportData.length} 条商品数据`)
+  const dateStr = new Date().toISOString().slice(0, 10)
+
+  loading.value = true
+  try {
+    const outBlob = await zip.generateAsync({ type: 'blob' })
+    const a = document.createElement('a')
+    const href = URL.createObjectURL(outBlob)
+    a.href = href
+    a.download = `商品列表含图片_${dateStr}.zip`
+    a.click()
+    URL.revokeObjectURL(href)
+  } catch (e) {
+    ElMessage.error(e.message || '生成压缩包失败')
+    return
+  } finally {
+    loading.value = false
+  }
+
+  const tip =
+    failImg > 0
+      ? `已导出 ${exportData.length} 条；图片 ${okImg} 张已打包，${failImg} 张未写入（见压缩包内「图片下载失败明细.txt」）`
+      : `已导出 ${exportData.length} 条商品；${okImg ? `含 ${okImg} 张图片` : '无商品图片'}`
+  ElMessage.success(tip)
 }
 
 const handleViewportResize = () => {
@@ -1054,11 +1338,9 @@ onBeforeUnmount(() => {
 
     .product-image-cell {
       .product-thumb-list {
-        width: 50px;
-        height: 50px;
-        object-fit: cover;
-        border-radius: 6px;
         border: 1px solid #E4E7ED;
+        border-radius: 6px;
+        overflow: hidden;
       }
       .product-icon-placeholder {
         width: 50px;

@@ -6,6 +6,8 @@ import zhCn from 'element-plus/es/locale/lang/zh-cn'
 import * as ElementPlusIconsVue from '@element-plus/icons-vue'
 import router from './router'
 import App from './App.vue'
+import { initTokenAutoRenew } from '@/auth/token-auto-renew'
+import loadMoreDirective from '@/directives/loadMore'
 import './styles/index.scss'
 
 const app = createApp(App)
@@ -19,4 +21,6 @@ for (const [key, component] of Object.entries(ElementPlusIconsVue)) {
 app.use(pinia)
 app.use(router)
 app.use(ElementPlus, { locale: zhCn })
+app.directive('load-more', loadMoreDirective)
+initTokenAutoRenew(pinia)
 app.mount('#app')

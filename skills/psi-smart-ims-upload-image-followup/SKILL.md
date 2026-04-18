@@ -41,6 +41,7 @@ description: >-
 
 - **HTTP**：`POST /api/v1/products/search-by-image`（网关前缀以部署为准）  
 - **Body**：图片检索请求 JSON，其中 **`imageBase64` 必填**；可设 `page`、`size`（建议首查 `size` 为 **5～10**，避免漏检）。  
+- **`keyword` 使用规则**：若用户仅上传图片、未明确提供商品名/关键词，则**不传 `keyword`**（或置空），只做纯图搜；仅当用户明确给出商品名/关键词时，才把该值传入 `keyword` 作为补充过滤。  
 - **`similarityThreshold`（图搜图相似度阈值）**：**默认 `0.7`**。若请求中传入该字段，**不得小于 `0.5`**；若用户或上游给出的值低于 `0.5`，在组请求前应**钳制为 `0.5`** 并可在回复中简要说明。  
 - **超时**：建议 **120s**（向量检索较慢）。
 
@@ -87,7 +88,7 @@ psims purchase orders list -q "{\"productId\":123,\"page\":1,\"size\":20}"
 
 | 接口 | 路径参数 | Query 参数 | Body 参数 | 文件参数 |
 |------|----------|------------|-----------|----------|
-| `POST /products/search-by-image` | 无 | 无 | `page`(可选),`size`(可选),`keyword`(可选),`categoryName`(可选),`status`(可选),`imageBase64`(必填),`similarityThreshold`(可选，**默认 0.7**；若传入则 **≥ 0.5**) | 无 |
+| `POST /products/search-by-image` | 无 | 无 | `page`(可选),`size`(可选),`keyword`(可选；**仅在用户明确给出商品名/关键词时传**，仅传图时不传),`categoryName`(可选),`status`(可选),`imageBase64`(必填),`similarityThreshold`(可选，**默认 0.7**；若传入则 **≥ 0.5**) | 无 |
 | `GET /inventory/product/{productId}` | `productId`(必填) | 无 | 无 | 无 |
 | `GET /sales/orders` | 无 | `productId`(建议必传),`page`(可选),`size`(可选),`sort`(可选),`order`(可选),`keyword`(可选),`warehouseId`(可选),`customerId`(可选),`supplierId`(可选),`categoryName`(可选),`productStatus`(可选),`stagnantStatus`(可选),`inboundStatus`(可选),`payStatus`(可选),`salesOrderStatus`(可选),`aftersalesStatus`(可选),`lastOutboundStart`(可选),`lastOutboundEnd`(可选),`lastInboundStart`(可选),`lastInboundEnd`(可选),`expectDateStart`(可选),`expectDateEnd`(可选),`createTimeStart`(可选),`createTimeEnd`(可选),`operatorName`(可选) | 无 | 无 |
 | `GET /purchase/orders` | 无 | `productId`(建议必传),`page`(可选),`size`(可选),`sort`(可选),`order`(可选),`keyword`(可选),`warehouseId`(可选),`customerId`(可选),`supplierId`(可选),`categoryName`(可选),`productStatus`(可选),`stagnantStatus`(可选),`inboundStatus`(可选),`payStatus`(可选),`salesOrderStatus`(可选),`aftersalesStatus`(可选),`lastOutboundStart`(可选),`lastOutboundEnd`(可选),`lastInboundStart`(可选),`lastInboundEnd`(可选),`expectDateStart`(可选),`expectDateEnd`(可选),`createTimeStart`(可选),`createTimeEnd`(可选),`operatorName`(可选) | 无 | 无 |

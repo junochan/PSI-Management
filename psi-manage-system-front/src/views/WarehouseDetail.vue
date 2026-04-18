@@ -1,5 +1,5 @@
 <template>
-  <div class="warehouse-detail">
+  <div class="warehouse-detail" v-loading="pageLoading" element-loading-text="加载中...">
     <el-card>
       <template #header>
         <div class="card-header">
@@ -10,10 +10,12 @@
           </div>
         </div>
       </template>
-      <el-descriptions :column="2" border>
+      <el-descriptions class="warehouse-detail-descriptions" :column="2" border>
         <el-descriptions-item label="仓库名称"><span class="warehouse-name">{{ warehouse?.name }}</span></el-descriptions-item>
         <el-descriptions-item label="仓库编码">{{ warehouse?.code || '-' }}</el-descriptions-item>
-        <el-descriptions-item label="仓库地址">{{ warehouse?.address }}</el-descriptions-item>
+        <el-descriptions-item label="仓库地址">
+          <div class="descriptions-long-text">{{ warehouse?.address || '-' }}</div>
+        </el-descriptions-item>
         <el-descriptions-item label="负责人">{{ warehouse?.managerName || '-' }}</el-descriptions-item>
         <el-descriptions-item label="商品种类">{{ warehouse?.totalCategories || warehouse?.categories }} 种</el-descriptions-item>
         <el-descriptions-item label="总库存">{{ warehouse?.totalStock || warehouse?.stock }} 件</el-descriptions-item>
@@ -26,7 +28,9 @@
         <el-descriptions-item label="仓库状态">
           <el-tag :type="warehouse?.status === 1 ? 'success' : 'danger'" effect="light">{{ warehouse?.status === 1 ? '正常' : '停用' }}</el-tag>
         </el-descriptions-item>
-        <el-descriptions-item label="备注">{{ warehouse?.remark || '-' }}</el-descriptions-item>
+        <el-descriptions-item label="备注">
+          <div class="descriptions-long-text">{{ warehouse?.remark || '-' }}</div>
+        </el-descriptions-item>
       </el-descriptions>
     </el-card>
 
@@ -65,7 +69,7 @@
     </el-card>
 
     <!-- 库存商品 -->
-    <el-card style="margin-top: 20px">
+    <el-card style="margin-top: 20px" v-loading="stockTableLoading" element-loading-text="加载中...">
       <template #header>
         <div class="card-header">
           <el-input v-model="searchKeyword" placeholder="搜索商品..." prefix-icon="Search" clearable style="width: 200px" />
@@ -75,7 +79,15 @@
         <el-table-column label="SKU" width="120">
           <template #default="{ row }"><span class="sku">{{ row.sku }}</span></template>
         </el-table-column>
-        <el-table-column label="商品名称" prop="name" min-width="180" />
+        <el-table-column label="商品名称" min-width="220" show-overflow-tooltip>
+          <template #default="{ row }">
+            <div class="product-cell-mini">
+              <img v-if="getRowProductImage(row)" :src="getRowProductImage(row)" class="product-thumb-mini" />
+              <span v-else class="product-icon-mini">📦</span>
+              <span class="product-name-mini">{{ row.name || row.productName || row.product }}</span>
+            </div>
+          </template>
+        </el-table-column>
         <el-table-column label="规格" prop="spec" width="150" />
         <el-table-column label="库存数量" width="100">
           <template #default="{ row }">
@@ -89,49 +101,92 @@
           </template>
         </el-table-column>
       </el-table>
+      <div class="pagination-wrapper">
+        <el-pagination
+          v-model:current-page="stockCurrentPage"
+          v-model:page-size="stockPageSize"
+          :total="stockTotal"
+          :page-sizes="[10, 20, 50]"
+          layout="total, sizes, prev, pager, next"
+        />
+      </div>
     </el-card>
   </div>
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, watch } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { warehouseApi, inventoryApi } from '@/api'
+import { firstProductImageUrl } from '@/utils/productImages'
 
 const router = useRouter()
 const route = useRoute()
 
 const warehouseId = computed(() => route.params.id)
 const warehouse = ref(null)
+const pageLoading = ref(true)
+const stockTableLoading = ref(false)
 const inventoryRows = ref([])
 const searchKeyword = ref('')
+const stockCurrentPage = ref(1)
+const stockPageSize = ref(20)
+const stockTotal = ref(0)
 
 const filteredStock = computed(() => {
-  const wid = Number(warehouseId.value)
-  const stock = inventoryRows.value.filter(i => Number(i.warehouseId) === wid)
-  if (!searchKeyword.value) return stock
-  return stock.filter(i => i.name.includes(searchKeyword.value) || i.sku.includes(searchKeyword.value))
+  return inventoryRows.value
 })
 
 const getStockStatusType = (status) => ({ '正常': 'success', '偏低': 'warning', '紧急补货': 'danger' }[status] || 'info')
+const getRowProductImage = (row) => firstProductImageUrl(row?.productImage || row?.image)
+
+const fetchWarehouseStock = async (opts = {}) => {
+  const initial = opts.initial === true
+  const id = Number(warehouseId.value)
+  if (!id) return
+  if (!initial) stockTableLoading.value = true
+  try {
+    const inv = await inventoryApi.list({
+      page: stockCurrentPage.value,
+      size: stockPageSize.value,
+      warehouseId: id,
+      keyword: searchKeyword.value?.trim() || undefined
+    })
+    inventoryRows.value = inv.list || []
+    stockTotal.value = Number(inv.total || 0)
+  } finally {
+    if (!initial) stockTableLoading.value = false
+  }
+}
 
 onMounted(async () => {
   const id = Number(warehouseId.value)
   if (!id) {
+    pageLoading.value = false
     ElMessage.warning('仓库 ID 无效')
     router.replace('/inventory')
     return
   }
   try {
     warehouse.value = await warehouseApi.get(id)
+    await fetchWarehouseStock({ initial: true })
   } catch (e) {
     ElMessage.error(e.message || '加载仓库失败')
     router.replace('/inventory')
     return
+  } finally {
+    pageLoading.value = false
   }
-  const inv = await inventoryApi.list({ page: 1, size: 1000, warehouseId: id })
-  inventoryRows.value = inv.list || []
+})
+
+watch([stockCurrentPage, stockPageSize], () => {
+  fetchWarehouseStock()
+})
+
+watch(searchKeyword, () => {
+  stockCurrentPage.value = 1
+  fetchWarehouseStock()
 })
 
 const goBack = () => router.back()
@@ -141,6 +196,7 @@ const viewStock = () => { router.push('/inventory') }
 
 <style lang="scss" scoped>
 .warehouse-detail {
+  min-height: 320px;
   .card-header {
     display: flex;
     justify-content: flex-end;
@@ -149,9 +205,52 @@ const viewStock = () => { router.push('/inventory') }
   }
   .warehouse-name { font-weight: 600; color: #303133; }
   .capacity-display { width: 100%; }
-  .sku { color: #E94560; font-family: monospace; }
+  .sku { color: #E94560; }
   .low-stock { color: #E6A23C; font-weight: 600; }
+  .pagination-wrapper { display: flex; justify-content: flex-end; margin-top: 16px; }
+  .product-cell-mini {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-width: 0;
+  }
+  .product-thumb-mini {
+    width: 32px;
+    height: 32px;
+    object-fit: cover;
+    border-radius: 4px;
+    flex-shrink: 0;
+  }
+  .product-icon-mini {
+    width: 32px;
+    height: 32px;
+    border-radius: 4px;
+    background: #f5f7fa;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    color: #909399;
+    flex-shrink: 0;
+  }
+  .product-name-mini {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    min-width: 0;
+  }
   .stats-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 20px; }
+  .warehouse-detail-descriptions {
+    :deep(.el-descriptions__label) { vertical-align: top; }
+    :deep(.el-descriptions__content) { vertical-align: top; }
+    .descriptions-long-text {
+      max-height: 4.5em;
+      line-height: 1.5;
+      overflow-y: auto;
+      word-break: break-word;
+      white-space: pre-wrap;
+    }
+  }
+
   .stat-item {
     display: flex;
     align-items: center;

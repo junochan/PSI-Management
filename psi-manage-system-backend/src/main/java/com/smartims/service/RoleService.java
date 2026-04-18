@@ -1,5 +1,7 @@
 package com.smartims.service;
 
+import com.smartims.common.PageResult;
+import com.smartims.dto.PageQuery;
 import com.smartims.entity.SysRole;
 import com.smartims.entity.SysPermission;
 import com.smartims.dto.RoleDTO;
@@ -18,6 +20,11 @@ public interface RoleService {
      * 获取所有角色列表
      */
     List<SysRole> getAllRoles();
+
+    /**
+     * 分页查询角色（keyword 对名称、编码、描述模糊）
+     */
+    PageResult<SysRole> getRolePage(PageQuery pageQuery);
 
     /**
      * 获取角色详情

@@ -593,8 +593,8 @@ CREATE TABLE `sys_category`  (
   `update_time` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
   `deleted` tinyint NOT NULL DEFAULT 0 COMMENT '逻辑删除：0-未删除，1-已删除',
   PRIMARY KEY (`id`) USING BTREE,
-  UNIQUE INDEX `uk_code`(`code` ASC) USING BTREE,
-  INDEX `idx_parent_id`(`parent_id` ASC) USING BTREE
+  INDEX `idx_parent_id`(`parent_id` ASC) USING BTREE,
+  INDEX `idx_code`(`code` ASC) USING BTREE
 ) ENGINE = InnoDB AUTO_INCREMENT = 28 CHARACTER SET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci COMMENT = '商品分类表' ROW_FORMAT = Dynamic;
 
 -- ----------------------------
@@ -1077,7 +1077,8 @@ CREATE TABLE `warehouse`  (
   `update_time` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
   `deleted` tinyint NOT NULL DEFAULT 0 COMMENT '逻辑删除：0-未删除，1-已删除',
   PRIMARY KEY (`id`) USING BTREE,
-  INDEX `idx_status`(`status` ASC) USING BTREE
+  INDEX `idx_status`(`status` ASC) USING BTREE,
+  INDEX `idx_wh_options`(`deleted` ASC, `status` ASC, `name` ASC) USING BTREE
 ) ENGINE = InnoDB AUTO_INCREMENT = 5 CHARACTER SET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci COMMENT = '仓库表' ROW_FORMAT = Dynamic;
 
 -- ----------------------------
@@ -1087,5 +1088,7 @@ INSERT INTO `warehouse` VALUES (1, '晋江仓库A区', NULL, '福建省泉州市
 INSERT INTO `warehouse` VALUES (2, '晋江仓库B区', NULL, '福建省泉州市晋江市池店镇泉安中路滨江商务区 B 区 1 号仓', 2, '王建国', 0, 0, 0.00, 65, 65.00, 1, '', '2026-04-13 16:10:50', '2026-04-13 16:10:50', 0);
 INSERT INTO `warehouse` VALUES (3, '晋江仓库C区', NULL, '福建省泉州市晋江市西园街道赖厝社区物流园 C 区 1 号仓', 2, '王建国', 0, 0, 0.00, 45, 45.00, 1, '', '2026-04-13 16:10:50', '2026-04-13 16:10:50', 0);
 INSERT INTO `warehouse` VALUES (4, '1', NULL, '', NULL, '', 0, 0, 0.00, 50, 50.00, 1, '', '2026-04-14 17:35:45', '2026-04-14 17:35:48', 1);
+
+-- 已有库可手动执行（若不存在同名索引）：ALTER TABLE `warehouse` ADD INDEX `idx_wh_options` (`deleted`, `status`, `name`);
 
 SET FOREIGN_KEY_CHECKS = 1;

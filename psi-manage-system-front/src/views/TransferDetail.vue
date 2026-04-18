@@ -1,5 +1,5 @@
 <template>
-  <div class="transfer-detail">
+  <div class="transfer-detail" v-loading="pageLoading" element-loading-text="加载中...">
     <el-card>
       <template #header>
         <div class="card-header">
@@ -79,6 +79,7 @@ const route = useRoute()
 
 const transferId = computed(() => route.params.id)
 const transfer = ref(null)
+const pageLoading = ref(true)
 
 // 状态格式化函数
 const formatTransferStatus = (status) => {
@@ -95,17 +96,22 @@ const isTransferring = (status) => formatTransferStatus(status) === '调拨中'
 const isTransferCompleted = (status) => formatTransferStatus(status) === '已完成'
 
 onMounted(async () => {
-  const id = Number(transferId.value)
-  if (!id) {
-    ElMessage.warning('调拨单 ID 无效')
-    router.replace('/inventory')
-    return
-  }
+  pageLoading.value = true
   try {
-    transfer.value = await inventoryApi.transferGet(id)
-  } catch (e) {
-    ElMessage.error(e.message || '加载调拨单失败')
-    router.replace('/inventory')
+    const id = Number(transferId.value)
+    if (!id) {
+      ElMessage.warning('调拨单 ID 无效')
+      router.replace('/inventory')
+      return
+    }
+    try {
+      transfer.value = await inventoryApi.transferGet(id)
+    } catch (e) {
+      ElMessage.error(e.message || '加载调拨单失败')
+      router.replace('/inventory')
+    }
+  } finally {
+    pageLoading.value = false
   }
 })
 
@@ -129,7 +135,7 @@ const printTransfer = () => { ElMessage.success('打印调拨单功能已触发'
     align-items: center;
     .header-actions { display: flex; gap: 12px; }
   }
-  .order-no { color: #E94560; font-family: monospace; }
+  .order-no { color: #E94560; }
   .transfer-info {
     .warehouse-box {
       display: flex;

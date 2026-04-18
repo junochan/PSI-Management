@@ -1,5 +1,5 @@
 <template>
-  <div class="supplier-edit">
+  <div class="supplier-edit" v-loading="pageLoading" element-loading-text="加载中...">
     <el-card>
       <template #header>
         <div class="card-header">
@@ -77,6 +77,7 @@ const supplierForm = ref({
 })
 
 const supplierIndustriesList = ref([])
+const pageLoading = ref(true)
 
 const supplierRules = {
   name: [{ required: true, message: '请输入供应商名称', trigger: 'blur' }],
@@ -85,31 +86,36 @@ const supplierRules = {
 }
 
 onMounted(async () => {
-  if (!userStore.hasPermission('purchase:supplier')) {
-    ElMessage.warning('无供应商管理权限')
-    router.replace('/purchase')
-    return
-  }
-  const id = Number(supplierId.value)
-  if (!id) {
-    ElMessage.warning('供应商 ID 无效')
-    router.replace('/purchase')
-    return
-  }
-  const [supplier, industries] = await Promise.all([
-    supplierApi.get(id),
-    supplierIndustryApi.list()
-  ])
-  supplierIndustriesList.value = Array.isArray(industries) ? industries : []
-  if (supplier) {
-    supplierForm.value = {
-      name: supplier.name,
-      industryIds: Array.isArray(supplier.industryIds) ? [...supplier.industryIds] : [],
-      address: supplier.address,
-      phone: supplier.phone,
-      email: supplier.email || '',
-      remark: supplier.remark || ''
+  pageLoading.value = true
+  try {
+    if (!userStore.hasPermission('purchase:supplier')) {
+      ElMessage.warning('无供应商管理权限')
+      router.replace('/purchase')
+      return
     }
+    const id = Number(supplierId.value)
+    if (!id) {
+      ElMessage.warning('供应商 ID 无效')
+      router.replace('/purchase')
+      return
+    }
+    const [supplier, industries] = await Promise.all([
+      supplierApi.get(id),
+      supplierIndustryApi.list()
+    ])
+    supplierIndustriesList.value = Array.isArray(industries) ? industries : []
+    if (supplier) {
+      supplierForm.value = {
+        name: supplier.name,
+        industryIds: Array.isArray(supplier.industryIds) ? [...supplier.industryIds] : [],
+        address: supplier.address,
+        phone: supplier.phone,
+        email: supplier.email || '',
+        remark: supplier.remark || ''
+      }
+    }
+  } finally {
+    pageLoading.value = false
   }
 })
 

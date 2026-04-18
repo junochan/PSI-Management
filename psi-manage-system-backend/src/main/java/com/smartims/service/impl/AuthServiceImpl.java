@@ -152,6 +152,22 @@ public class AuthServiceImpl implements AuthService {
     }
 
     @Override
+    public String refreshToken() {
+        Long userId = UserContext.getCurrentUserId();
+        if (userId == null) {
+            throw new BusinessException("未登录或登录已过期");
+        }
+        SysUser user = sysUserMapper.selectById(userId);
+        if (user == null) {
+            throw new BusinessException("用户不存在");
+        }
+        if (user.getStatus() != 1) {
+            throw new BusinessException("用户已被禁用");
+        }
+        return jwtUtil.generateToken(user.getId(), user.getUsername());
+    }
+
+    @Override
     @Transactional(rollbackFor = Exception.class)
     public void changePassword(ChangePasswordDTO dto) {
         Long userId = UserContext.getCurrentUserId();

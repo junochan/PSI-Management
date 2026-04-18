@@ -1,5 +1,5 @@
 <template>
-  <div class="dashboard-page">
+  <div class="dashboard-page" v-loading="loading" element-loading-text="加载中...">
     <!-- 统计卡片 -->
     <div class="stats-grid">
       <el-card class="stat-card dashboard-stat-card" v-for="stat in statistics" :key="stat.label">
@@ -164,7 +164,15 @@
         <el-table-column label="商品信息" min-width="160" show-overflow-tooltip>
           <template #default="{ row }">
             <div class="product-cell">
-              <img v-if="getProductImage(row)" :src="getProductImage(row)" class="product-thumb" />
+              <ProductImageThumb
+                v-if="getProductImage(row)"
+                :src="getProductImage(row)"
+                :preview-src-list="parseProductImageUrls(row?.productImage || row?.image)"
+                class="product-thumb"
+                :width="36"
+                :height="36"
+                :radius="8"
+              />
               <div v-else class="product-icon">{{ row.productIcon }}</div>
               <div class="product-info">
                 <h4 class="product-info-title">{{ row.product }}</h4>
@@ -206,7 +214,8 @@ import { ref, computed, onMounted, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import * as echarts from 'echarts'
 import { dashboardApi } from '@/api'
-import { firstProductImageUrl } from '@/utils/productImages'
+import ProductImageThumb from '@/components/ProductImageThumb.vue'
+import { firstProductImageUrl, parseProductImageUrls } from '@/utils/productImages'
 import { formatAmountDisplay } from '@/utils/moneyFormat'
 
 const router = useRouter()
@@ -449,6 +458,7 @@ onMounted(() => {
 
 <style lang="scss" scoped>
 .dashboard-page {
+  min-height: 360px;
   .stats-grid {
     display: grid;
     grid-template-columns: repeat(4, 1fr);
@@ -674,7 +684,6 @@ onMounted(() => {
 
     .order-no {
       color: #E94560;
-      font-family: monospace;
     }
 
     :deep(.col-order-time .cell) {
@@ -688,11 +697,9 @@ onMounted(() => {
       min-width: 0;
 
       .product-thumb {
-        width: 36px;
-        height: 36px;
         flex-shrink: 0;
-        object-fit: cover;
         border-radius: 8px;
+        overflow: hidden;
       }
 
       .product-icon {

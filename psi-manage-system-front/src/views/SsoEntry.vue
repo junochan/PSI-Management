@@ -1,11 +1,9 @@
 <template>
-  <div class="sso-entry">
-    <p>正在登录…</p>
-  </div>
+  <div class="sso-entry" v-loading="ssoLoading" element-loading-text="正在登录…"></div>
 </template>
 
 <script setup>
-import { onMounted } from 'vue'
+import { ref, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { authApi } from '@/api'
@@ -17,17 +15,18 @@ const route = useRoute()
 const router = useRouter()
 const userStore = useUserStore()
 const navigationStore = useNavigationStore()
+const ssoLoading = ref(true)
 
 onMounted(async () => {
-  const raw = route.query.key ?? route.query.token
-  const key = raw != null ? String(raw).trim() : ''
-  if (!key) {
-    ElMessage.error('缺少凭证')
-    await router.replace('/login')
-    return
-  }
-
   try {
+    const raw = route.query.key ?? route.query.token
+    const key = raw != null ? String(raw).trim() : ''
+    if (!key) {
+      ElMessage.error('缺少凭证')
+      await router.replace('/login')
+      return
+    }
+
     const res = await authApi.ssoLogin({ key })
     userStore.login(
       {
@@ -60,6 +59,8 @@ onMounted(async () => {
   } catch (e) {
     ElMessage.error(e?.message || '中转登录失败')
     await router.replace('/login')
+  } finally {
+    ssoLoading.value = false
   }
 })
 </script>
