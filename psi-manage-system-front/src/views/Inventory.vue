@@ -1045,7 +1045,27 @@
             @filter-method="onSalesOrderFilter"
             :disabled="stockPendingSalesOrders.length === 0"
           >
-            <el-option v-for="so in stockPendingSalesOrders" :key="so.id" :label="`#${so.orderNo} - ${so.customerName || ''} - 待发货${so.pendingQuantity || so.quantity}件`" :value="so.id" />
+            <el-option
+              v-for="so in stockPendingSalesOrders"
+              :key="so.id"
+              :label="`#${so.orderNo} - ${so.customerName || ''} - ${so.productName || ''} - 待发货${so.pendingQuantity || so.quantity}件`"
+              :value="so.id"
+            >
+              <div class="sales-order-option">
+                <img
+                  v-if="resolveSalesOrderImage(so)"
+                  class="sales-order-option__thumb"
+                  :src="resolveSalesOrderImage(so)"
+                  alt="商品图"
+                >
+                <div v-else class="sales-order-option__thumb-placeholder">📦</div>
+                <div class="sales-order-option__meta">
+                  <span class="sales-order-option__text">
+                    #{{ so.orderNo }} · {{ so.customerName || '未命名客户' }} · {{ so.productName || '未命名商品' }} · 待发货{{ so.pendingQuantity || so.quantity }}件
+                  </span>
+                </div>
+              </div>
+            </el-option>
           </el-select>
         </el-form-item>
         <el-form-item label="出库数量" prop="quantity">
@@ -1222,25 +1242,60 @@
             @filter-method="onSalesOrderFilter"
             :disabled="pendingSalesOrders.length === 0"
           >
-            <el-option v-for="so in pendingSalesOrders" :key="so.id" :label="`#${so.orderNo} - ${so.customerName || ''} - ${so.productName || ''} - 待发货${so.pendingQuantity || so.quantity}件`" :value="so.id" />
+            <el-option
+              v-for="so in pendingSalesOrders"
+              :key="so.id"
+              :label="`#${so.orderNo} - ${so.customerName || ''} - ${so.productName || ''} - 待发货${so.pendingQuantity || so.quantity}件`"
+              :value="so.id"
+            >
+              <div class="sales-order-option">
+                <img
+                  v-if="resolveSalesOrderImage(so)"
+                  class="sales-order-option__thumb"
+                  :src="resolveSalesOrderImage(so)"
+                  alt="商品图"
+                >
+                <div v-else class="sales-order-option__thumb-placeholder">📦</div>
+                <div class="sales-order-option__meta">
+                  <span class="sales-order-option__text">
+                    #{{ so.orderNo }} · {{ so.customerName || '未命名客户' }} · {{ so.productName || '未命名商品' }} · 待发货{{ so.pendingQuantity || so.quantity }}件
+                  </span>
+                </div>
+              </div>
+            </el-option>
           </el-select>
         </el-form-item>
         <el-form-item label="出库仓库" prop="warehouseId">
           <el-select
             v-model="salesOutboundForm.warehouseId"
-            v-load-more="{ popperClass: 'inventory-shared-warehouse-dropdown', onLoadMore: loadMoreWarehouseFilterOptions, disabled: warehouseFilterOptionsLoading || !warehouseFilterOptionsHasMore }"
-            popper-class="inventory-shared-warehouse-dropdown"
             placeholder="请选择仓库"
             style="width: 100%"
             filterable
-            @visible-change="onWarehouseDropdownVisibleChange"
-            @filter-method="onWarehouseFilter"
+            :loading="salesOutboundWarehouseLoading"
+            :disabled="!salesOutboundForm.salesOrderId || salesOutboundWarehouseOptions.length === 0"
           >
-            <el-option v-for="w in warehouseFilterOptions" :key="w.id" :label="w.name" :value="w.id" />
+            <el-option
+              v-for="w in salesOutboundWarehouseOptions"
+              :key="w.id"
+              :label="`${w.name}（库存${w.availableStock}件）`"
+              :value="w.id"
+            />
           </el-select>
+          <div
+            v-if="salesOutboundForm.salesOrderId && !salesOutboundWarehouseLoading && salesOutboundWarehouseOptions.length === 0"
+            class="quantity-tip"
+          >
+            当前没有满足出库数量的仓库，请减少出库数量后重试
+          </div>
         </el-form-item>
         <el-form-item label="出库数量" prop="quantity">
-          <el-input-number v-model="salesOutboundForm.quantity" :min="1" :max="salesOutboundForm.maxQuantity || 9999" style="width: 100%" />
+          <el-input-number
+            v-model="salesOutboundForm.quantity"
+            :min="1"
+            :max="salesOutboundForm.maxQuantity || 9999"
+            style="width: 100%"
+            @change="onSalesOutboundQuantityChange"
+          />
           <div class="quantity-tip" v-if="salesOutboundForm.maxQuantity">最大可出库: {{ salesOutboundForm.maxQuantity }} 件</div>
         </el-form-item>
         <el-form-item label="出库备注">
@@ -1308,7 +1363,14 @@
 
       <template #footer>
         <el-button @click="manualOutboundVisible = false">取消</el-button>
-        <el-button type="primary" @click="submitManualOutbound" :loading="loading" :disabled="manualOutboundType === 'sales' && pendingSalesOrders.length === 0">确认出库</el-button>
+        <el-button
+          type="primary"
+          @click="submitManualOutbound"
+          :loading="loading"
+          :disabled="manualOutboundType === 'sales' && (pendingSalesOrders.length === 0 || salesOutboundWarehouseOptions.length === 0)"
+        >
+          确认出库
+        </el-button>
       </template>
     </el-dialog>
   </div>
@@ -1422,6 +1484,7 @@ syncActiveTabToPermissions()
 const recordsSubTab = ref(parseRecordsSubTab(route.query.subtab))
 const searchKeyword = ref('')
 const queryImageDataUrl = ref('')
+const queryImageFile = ref(null)
 const imageSimilarityThreshold = ref(0.7)
 const imageSearchMode = ref(false)
 const imageSearchLoading = ref(false)
@@ -2267,6 +2330,7 @@ const onInventoryQueryImageChange = (uploadFile) => {
     ElMessage.warning('查询图片大小不能超过 2MB')
     return
   }
+  queryImageFile.value = raw
   const reader = new FileReader()
   reader.onload = (e) => {
     queryImageDataUrl.value = e.target.result
@@ -2279,7 +2343,7 @@ const submitImageSearch = async () => {
     ElMessage.warning('无库存数据查看权限')
     return
   }
-  if (!queryImageDataUrl.value) {
+  if (!queryImageFile.value) {
     ElMessage.warning('请先上传图片')
     return
   }
@@ -2288,11 +2352,12 @@ const submitImageSearch = async () => {
 }
 
 const runImageSearch = async () => {
-  if (!queryImageDataUrl.value) return
+  if (!queryImageFile.value) return
   imageSearchLoading.value = true
   try {
     await ensureSystemStaleDaysLoaded()
     const body = {
+      file: queryImageFile.value,
       page: inventoryCurrentPage.value,
       size: inventoryPageSize.value,
       keyword: searchKeyword.value || undefined,
@@ -2303,7 +2368,6 @@ const runImageSearch = async () => {
       lastOutboundEnd: filterLastOutboundRange.value?.[1],
       lastInboundStart: filterLastInboundRange.value?.[0],
       lastInboundEnd: filterLastInboundRange.value?.[1],
-      imageBase64: queryImageDataUrl.value,
       similarityThreshold: imageSimilarityThreshold.value
     }
     const res = await inventoryApi.searchByImage(body)
@@ -2323,6 +2387,7 @@ const runImageSearch = async () => {
 const exitImageSearch = () => {
   imageSearchMode.value = false
   queryImageDataUrl.value = ''
+  queryImageFile.value = null
   imageSearchRows.value = []
   imageSearchTotal.value = 0
   fetchInventoryTable()
@@ -2556,6 +2621,9 @@ const salesOutboundForm = ref({
   maxQuantity: 0,
   remark: ''
 })
+const salesOutboundWarehouseOptions = ref([])
+const salesOutboundWarehouseLoading = ref(false)
+let salesOutboundWarehouseRequestId = 0
 const salesOutboundRules = {
   salesOrderId: [{ required: true, message: '请选择销售订单', trigger: 'change' }],
   warehouseId: [{ required: true, message: '请选择仓库', trigger: 'change' }],
@@ -2611,6 +2679,11 @@ const getCategoryIcon = (cat) => ({ '手机': '📱', '电脑': '💻', '配件'
 
 // 列表行图片：仅以库存接口回填的 productImage / image 为准
 const getProductImage = (_productId, rowImage) => firstProductImageUrl(rowImage)
+
+const resolveSalesOrderImage = (salesOrder) => {
+  if (!salesOrder) return null
+  return firstProductImageUrl(salesOrder.productImage || salesOrder.image)
+}
 
 const resolveProductImageById = (productId) => {
   if (!productId) return null
@@ -3233,11 +3306,12 @@ const openManualOutboundDialog = async () => {
   manualOutboundType.value = 'sales'
   salesOutboundForm.value = {
     salesOrderId: null,
-    warehouseId: warehouseFilterOptions.value[0]?.id || null,
+    warehouseId: null,
     quantity: 1,
     maxQuantity: 0,
     remark: ''
   }
+  salesOutboundWarehouseOptions.value = []
   otherOutboundForm.value = {
     inventoryId: null,
     productId: null,
@@ -3259,6 +3333,89 @@ const onSalesOutboundOrderChange = (salesOrderId) => {
     const pendingQty = so.pendingQuantity || so.quantity || 1
     salesOutboundForm.value.maxQuantity = pendingQty > 0 ? pendingQty : 1
     salesOutboundForm.value.quantity = pendingQty > 0 ? pendingQty : 1
+    salesOutboundForm.value.warehouseId = null
+  } else {
+    salesOutboundForm.value.maxQuantity = 0
+    salesOutboundForm.value.quantity = 1
+    salesOutboundForm.value.warehouseId = null
+  }
+  void reloadSalesOutboundWarehouseOptions()
+}
+
+const onSalesOutboundQuantityChange = () => {
+  void reloadSalesOutboundWarehouseOptions()
+}
+
+const reloadSalesOutboundWarehouseOptions = async () => {
+  const salesOrderId = Number(salesOutboundForm.value.salesOrderId || 0)
+  const requiredQty = Number(salesOutboundForm.value.quantity || 0)
+  if (!salesOrderId || requiredQty <= 0) {
+    salesOutboundWarehouseOptions.value = []
+    salesOutboundForm.value.warehouseId = null
+    return
+  }
+  const so = salesOrders.value.find((s) => Number(s.id) === salesOrderId)
+  const productId = Number(so?.productId || 0)
+  if (!productId) {
+    salesOutboundWarehouseOptions.value = []
+    salesOutboundForm.value.warehouseId = null
+    return
+  }
+
+  const requestId = ++salesOutboundWarehouseRequestId
+  salesOutboundWarehouseLoading.value = true
+  try {
+    const size = 100
+    let page = 1
+    let total = 0
+    const eligible = []
+
+    while (page <= 20) {
+      const res = await inventoryApi.list({
+        page,
+        size,
+        productId
+      })
+      const rows = res?.list || []
+      total = Number(res?.total) || rows.length
+      rows.forEach((row) => {
+        const stock = Number(row?.stock || 0)
+        if (stock >= requiredQty) {
+          eligible.push({
+            id: row.warehouseId,
+            name: row.warehouseName || getWarehouseName(row.warehouseId) || `仓库${row.warehouseId}`,
+            availableStock: stock
+          })
+        }
+      })
+      if (rows.length < size || page * size >= total) break
+      page += 1
+    }
+
+    if (requestId !== salesOutboundWarehouseRequestId) return
+
+    const dedupMap = new Map()
+    eligible.forEach((item) => {
+      const key = Number(item.id)
+      const prev = dedupMap.get(key)
+      if (!prev || item.availableStock > prev.availableStock) {
+        dedupMap.set(key, item)
+      }
+    })
+    const nextOptions = Array.from(dedupMap.values())
+    salesOutboundWarehouseOptions.value = nextOptions
+    if (!nextOptions.some((w) => Number(w.id) === Number(salesOutboundForm.value.warehouseId))) {
+      salesOutboundForm.value.warehouseId = nextOptions[0]?.id || null
+    }
+  } catch (error) {
+    if (requestId !== salesOutboundWarehouseRequestId) return
+    salesOutboundWarehouseOptions.value = []
+    salesOutboundForm.value.warehouseId = null
+    ElMessage.error(error.message || '加载可出库仓库失败')
+  } finally {
+    if (requestId === salesOutboundWarehouseRequestId) {
+      salesOutboundWarehouseLoading.value = false
+    }
   }
 }
 
@@ -3726,6 +3883,51 @@ watch(
     }
   }
 
+  .sales-order-option {
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+    min-width: 0;
+
+    .sales-order-option__thumb {
+      width: 24px;
+      height: 24px;
+      border-radius: 4px;
+      border: 1px solid #e4e7ed;
+      object-fit: cover;
+      flex-shrink: 0;
+      background: #f5f7fa;
+    }
+
+    .sales-order-option__thumb-placeholder {
+      width: 24px;
+      height: 24px;
+      border-radius: 4px;
+      border: 1px solid #e4e7ed;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      background: #f5f7fa;
+      color: #909399;
+      font-size: 12px;
+      flex-shrink: 0;
+    }
+
+    .sales-order-option__meta {
+      min-width: 0;
+      flex: 1;
+    }
+
+    .sales-order-option__text {
+      display: block;
+      color: #909399;
+      font-size: 12px;
+      line-height: 1.4;
+      white-space: normal;
+      word-break: break-all;
+    }
+  }
+
   .pagination-wrapper { display: flex; justify-content: flex-end; padding-top: 16px; }
   .image-query-thumb {
     width: 32px;
@@ -3832,5 +4034,87 @@ watch(
   overflow-x: hidden;
   word-break: break-all;
   white-space: normal;
+}
+
+:deep(.inventory-stock-outbound-so-dropdown .el-select-dropdown__item),
+:deep(.inventory-manual-outbound-so-dropdown .el-select-dropdown__item) {
+  height: auto;
+  min-height: 40px;
+  line-height: normal;
+  padding-top: 6px;
+  padding-bottom: 6px;
+}
+
+:deep(.inventory-stock-outbound-so-dropdown .el-select-dropdown__item.is-hovering),
+:deep(.inventory-manual-outbound-so-dropdown .el-select-dropdown__item.is-hovering) {
+  height: auto;
+}
+</style>
+
+<style lang="scss">
+.inventory-stock-outbound-so-dropdown.el-select-dropdown,
+.inventory-manual-outbound-so-dropdown.el-select-dropdown {
+  width: min(90vw, 560px) !important;
+  max-width: min(90vw, 560px) !important;
+}
+
+.inventory-stock-outbound-so-dropdown .el-select-dropdown__item,
+.inventory-manual-outbound-so-dropdown .el-select-dropdown__item {
+  height: auto !important;
+  min-height: 40px;
+  line-height: normal !important;
+  white-space: normal;
+  padding-top: 6px;
+  padding-bottom: 6px;
+}
+
+.inventory-stock-outbound-so-dropdown .sales-order-option,
+.inventory-manual-outbound-so-dropdown .sales-order-option {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  min-width: 0;
+}
+
+.inventory-stock-outbound-so-dropdown .sales-order-option__thumb,
+.inventory-manual-outbound-so-dropdown .sales-order-option__thumb {
+  width: 24px;
+  height: 24px;
+  border-radius: 4px;
+  border: 1px solid #e4e7ed;
+  object-fit: cover;
+  flex-shrink: 0;
+  background: #f5f7fa;
+}
+
+.inventory-stock-outbound-so-dropdown .sales-order-option__thumb-placeholder,
+.inventory-manual-outbound-so-dropdown .sales-order-option__thumb-placeholder {
+  width: 24px;
+  height: 24px;
+  border-radius: 4px;
+  border: 1px solid #e4e7ed;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: #f5f7fa;
+  color: #909399;
+  font-size: 12px;
+  flex-shrink: 0;
+}
+
+.inventory-stock-outbound-so-dropdown .sales-order-option__meta,
+.inventory-manual-outbound-so-dropdown .sales-order-option__meta {
+  min-width: 0;
+  flex: 1;
+}
+
+.inventory-stock-outbound-so-dropdown .sales-order-option__text,
+.inventory-manual-outbound-so-dropdown .sales-order-option__text {
+  display: block;
+  color: #606266;
+  font-size: 12px;
+  line-height: 1.4;
+  white-space: normal;
+  word-break: break-all;
 }
 </style>

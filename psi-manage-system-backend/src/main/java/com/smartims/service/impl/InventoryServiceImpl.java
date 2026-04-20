@@ -29,6 +29,7 @@ import org.springframework.dao.DuplicateKeyException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
+import org.springframework.web.multipart.MultipartFile;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
@@ -1084,13 +1085,16 @@ public class InventoryServiceImpl implements InventoryService {
     }
 
     @Override
-    public PageResult<Inventory> searchByImage(InventoryImageSearchRequest req) {
+    public PageResult<Inventory> searchByImage(InventoryImageSearchRequest req, MultipartFile image) {
         long page = req.getPage() != null && req.getPage() >= 1 ? req.getPage() : 1;
         long size = req.getSize() != null && req.getSize() >= 1 ? Math.min(req.getSize(), IMAGE_SEARCH_MAX_ROWS) : 10;
 
         String qPayload;
         try {
-            qPayload = ImagePayloadUtil.toPngDataUrl(req.getImageBase64().trim());
+            if (image == null || image.isEmpty()) {
+                throw new BusinessException("请上传查询图片");
+            }
+            qPayload = ImagePayloadUtil.toPngDataUrl(image.getBytes());
         } catch (BusinessException e) {
             throw e;
         } catch (Exception e) {

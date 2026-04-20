@@ -81,7 +81,7 @@ description: >-
 | `import-excel` | **必须** `--file <本地 Excel>`，multipart 字段 `file`，返回含 `jobId` |
 | `import-task <jobId>` | 查询异步导入进度（与 `getImportTask` 一致） |
 | `upload-image` | **必须** `--file <本地路径>`，对应 multipart `file` |
-| `search-image` | Body 含 `imageBase64` 等图片检索字段 |
+| `search-image` | multipart：`image` 文件字段 + 可选检索字段 |
 
 示例：
 
@@ -92,7 +92,7 @@ psims products create -d "{\"productName\":\"测试\",\"sku\":\"T1\"}"
 psims products upload-image --file ./a.jpg
 psims products import-excel --file ./products.xlsx
 psims products import-task "<jobId>"
-psims products search-image -f ./search-body.json
+psims products search-image --image ./query.jpg -f ./search-body.json
 ```
 
 ### 分类 `psims categories <子命令>`
@@ -123,7 +123,7 @@ psims categories create -d "{\"name\":\"数码\"}"
 | `POST /products/import` | 无 | 无 | 无 | `file`(必填, Excel) |
 | `GET /products/import/{jobId}` | `jobId`(必填) | 无 | 无 | 无 |
 | `POST /products/image` | 无 | 无 | 无 | `file`(必填, 图片) |
-| `POST /products/search-by-image` | 无 | 无 | `page`(可选),`size`(可选),`keyword`(可选),`categoryName`(可选),`status`(可选),`imageBase64`(必填),`similarityThreshold`(可选) | 无 |
+| `POST /products/search-by-image` | 无 | 无 | `page`(可选),`size`(可选),`keyword`(可选),`categoryName`(可选),`status`(可选),`similarityThreshold`(可选) | `image`(必填，multipart 文件字段) |
 
 ### 分类接口
 

@@ -5,6 +5,7 @@ import com.smartims.util.ImageHashUtil;
 
 import javax.imageio.ImageIO;
 import java.awt.image.BufferedImage;
+import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.util.Base64;
@@ -26,6 +27,27 @@ public final class ImagePayloadUtil {
         if (bi == null) {
             throw new IllegalArgumentException("invalid image");
         }
+        return bufferedImageToPngDataUrl(bi);
+    }
+
+    /**
+     * 原始图片字节（如 {@code MultipartFile#getBytes()}）规范化 PNG data URL，供多模态向量化。
+     */
+    public static String toPngDataUrl(byte[] imageBytes) throws IOException {
+        if (imageBytes == null || imageBytes.length == 0) {
+            throw new IllegalArgumentException("empty image");
+        }
+        if (imageBytes.length > MAX_QUERY_IMAGE_BYTES) {
+            throw new BusinessException("图片大小不能超过 2MB");
+        }
+        BufferedImage bi = ImageIO.read(new ByteArrayInputStream(imageBytes));
+        if (bi == null) {
+            throw new IllegalArgumentException("invalid image");
+        }
+        return bufferedImageToPngDataUrl(bi);
+    }
+
+    private static String bufferedImageToPngDataUrl(BufferedImage bi) throws IOException {
         ByteArrayOutputStream baos = new ByteArrayOutputStream();
         ImageIO.write(bi, "png", baos);
         String b64 = Base64.getEncoder().encodeToString(baos.toByteArray());

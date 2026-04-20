@@ -73,7 +73,7 @@ description: >-
 psims inventory list -q "{}"
 psims inventory get 1
 psims inventory by-product 100
-psims inventory search-image -f ./body.json
+psims inventory search-image --image ./query.jpg -f ./body.json
 psims inventory stats
 ```
 
@@ -118,7 +118,7 @@ psims inventory set-stagnant-days 1 --days 90
 | `GET /inventory` | 无 | `page`,`size`,`sort`,`order`,`keyword`,`productId`,`warehouseId`,`customerId`,`supplierId`,`categoryName`,`productStatus`,`stagnantStatus`,`inboundStatus`,`payStatus`,`salesOrderStatus`,`aftersalesStatus`,`lastOutboundStart`,`lastOutboundEnd`,`lastInboundStart`,`lastInboundEnd`,`expectDateStart`,`expectDateEnd`,`createTimeStart`,`createTimeEnd`,`operatorName`（均可选） | 无 | 无 |
 | `GET /inventory/{id}` | `id`(必填) | 无 | 无 | 无 |
 | `GET /inventory/product/{productId}` | `productId`(必填) | 无 | 无 | 无 |
-| `POST /inventory/search-by-image` | 无 | 无 | `page`(可选),`size`(可选),`keyword`(可选),`productId`(可选),`warehouseId`(可选),`stagnantStatus`(可选),`lastOutboundStart`(可选),`lastOutboundEnd`(可选),`lastInboundStart`(可选),`lastInboundEnd`(可选),`imageBase64`(必填),`similarityThreshold`(可选) | 无 |
+| `POST /inventory/search-by-image` | 无 | 无 | `page`(可选),`size`(可选),`keyword`(可选),`productId`(可选),`warehouseId`(可选),`stagnantStatus`(可选),`lastOutboundStart`(可选),`lastOutboundEnd`(可选),`lastInboundStart`(可选),`lastInboundEnd`(可选),`similarityThreshold`(可选) | `image`(必填，multipart 文件字段) |
 | `GET /inventory/stats` | 无 | 无 | 无 | 无 |
 | `GET /inventory/outbounds` | 无 | `page`,`size`,`sort`,`order`,`keyword`,`productId`,`warehouseId`,`customerId`,`supplierId`,`categoryName`,`productStatus`,`stagnantStatus`,`inboundStatus`,`payStatus`,`salesOrderStatus`,`aftersalesStatus`,`lastOutboundStart`,`lastOutboundEnd`,`lastInboundStart`,`lastInboundEnd`,`expectDateStart`,`expectDateEnd`,`createTimeStart`,`createTimeEnd`,`operatorName`（均可选） | 无 | 无 |
 

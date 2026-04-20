@@ -346,6 +346,8 @@ const searchKeyword = ref('')
 const filterCategory = ref(null)
 const filterStatus = ref(null)
 const queryImageDataUrl = ref('')
+/** 以图搜图请求用原始文件（multipart），与预览用 Data URL 分离 */
+const queryImageFile = ref(null)
 const imageSimilarityThreshold = ref(0.7)
 const imageSearchMode = ref(false)
 const imageSearchLoading = ref(false)
@@ -536,6 +538,7 @@ const onProductQueryImageChange = (uploadFile) => {
     ElMessage.warning('查询图片大小不能超过 2MB')
     return
   }
+  queryImageFile.value = raw
   const reader = new FileReader()
   reader.onload = (e) => {
     queryImageDataUrl.value = e.target.result
@@ -548,7 +551,7 @@ const submitImageSearch = async () => {
     ElMessage.warning('无商品数据查看权限')
     return
   }
-  if (!queryImageDataUrl.value) {
+  if (!queryImageFile.value) {
     ElMessage.warning('请先上传图片')
     return
   }
@@ -557,16 +560,16 @@ const submitImageSearch = async () => {
 }
 
 const runImageSearch = async () => {
-  if (!queryImageDataUrl.value) return
+  if (!queryImageFile.value) return
   imageSearchLoading.value = true
   try {
     const body = {
+      file: queryImageFile.value,
       page: currentPage.value,
       size: pageSize.value,
       keyword: searchKeyword.value || undefined,
       categoryName: filterCategory.value || undefined,
       status: filterStatus.value || undefined,
-      imageBase64: queryImageDataUrl.value,
       similarityThreshold: imageSimilarityThreshold.value
     }
     const res = await productApi.searchByImage(body)
@@ -586,6 +589,7 @@ const runImageSearch = async () => {
 const exitImageSearch = () => {
   imageSearchMode.value = false
   queryImageDataUrl.value = ''
+  queryImageFile.value = null
   imageSearchRows.value = []
   imageSearchTotal.value = 0
   fetchProducts()
@@ -990,7 +994,7 @@ const handleExport = async () => {
     ElMessage.warning('无商品数据查看权限')
     return
   }
-  if (imageSearchMode.value && !queryImageDataUrl.value) {
+  if (imageSearchMode.value && !queryImageFile.value) {
     ElMessage.warning('查询图片已失效，请重新以图搜图后再导出')
     return
   }
@@ -999,12 +1003,12 @@ const handleExport = async () => {
   try {
     if (imageSearchMode.value) {
       const res = await productApi.searchByImage({
+        file: queryImageFile.value,
         page: 1,
         size: 5000,
         keyword: searchKeyword.value || undefined,
         categoryName: filterCategory.value || undefined,
         status: filterStatus.value || undefined,
-        imageBase64: queryImageDataUrl.value,
         similarityThreshold: imageSimilarityThreshold.value
       })
       rows = res.list || []

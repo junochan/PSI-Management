@@ -23,6 +23,7 @@ import com.smartims.service.InventoryEmbeddingSyncService;
 import com.smartims.service.ProductImageLoader;
 import com.smartims.service.ProductImageStorageService;
 import com.smartims.service.ProductService;
+import org.springframework.web.multipart.MultipartFile;
 import com.smartims.util.CodeGenerator;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -221,13 +222,16 @@ public class ProductServiceImpl implements ProductService {
     }
 
     @Override
-    public PageResult<Product> searchByImage(ProductImageSearchRequest req) {
+    public PageResult<Product> searchByImage(ProductImageSearchRequest req, MultipartFile image) {
         long page = req.getPage() != null && req.getPage() >= 1 ? req.getPage() : 1;
         long size = req.getSize() != null && req.getSize() >= 1 ? Math.min(req.getSize(), IMAGE_SEARCH_MAX_ROWS) : 10;
 
         String qPayload;
         try {
-            qPayload = ImagePayloadUtil.toPngDataUrl(req.getImageBase64().trim());
+            if (image == null || image.isEmpty()) {
+                throw new BusinessException("请上传查询图片");
+            }
+            qPayload = ImagePayloadUtil.toPngDataUrl(image.getBytes());
         } catch (BusinessException e) {
             throw e;
         } catch (Exception e) {

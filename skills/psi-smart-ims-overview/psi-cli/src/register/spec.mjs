@@ -71,13 +71,12 @@ const SPECS = [
   { command: 'products import-excel', method: 'POST', path: '/products/import', files: [{ name: 'file', required: true, desc: 'Excel 文件' }] },
   { command: 'products import-task', method: 'GET', path: '/products/import/{jobId}', pathParams: [{ name: 'jobId', type: 'string', required: true, desc: '异步导入任务 ID' }] },
   { command: 'products upload-image', method: 'POST', path: '/products/image', files: [{ name: 'file', required: true, desc: '图片文件' }] },
-  { command: 'products search-image', method: 'POST', path: '/products/search-by-image', body: [
+  { command: 'products search-image', method: 'POST', path: '/products/search-by-image', files: [{ name: 'image', required: true, desc: '查询图片文件（multipart）' }], body: [
     { name: 'page', type: 'number', required: false, desc: '页码，默认 1' },
     { name: 'size', type: 'number', required: false, desc: '每页条数，默认 10，范围 1~100' },
     { name: 'keyword', type: 'string', required: false, desc: '关键词' },
     { name: 'categoryName', type: 'string', required: false, desc: '分类名称' },
     { name: 'status', type: 'string', required: false, desc: '商品状态' },
-    { name: 'imageBase64', type: 'string', required: true, desc: '查询图片 base64' },
     { name: 'similarityThreshold', type: 'number', required: false, desc: '相似度阈值，0~1' }
   ] },
 
@@ -206,7 +205,7 @@ const SPECS = [
   { command: 'inventory list', method: 'GET', path: '/inventory', query: PAGE_QUERY_FIELDS },
   { command: 'inventory get', method: 'GET', path: '/inventory/{id}', pathParams: [{ name: 'id', type: 'number', required: true, desc: '库存记录 ID' }] },
   { command: 'inventory by-product', method: 'GET', path: '/inventory/product/{productId}', pathParams: [{ name: 'productId', type: 'number', required: true, desc: '商品 ID' }] },
-  { command: 'inventory search-image', method: 'POST', path: '/inventory/search-by-image', body: [
+  { command: 'inventory search-image', method: 'POST', path: '/inventory/search-by-image', files: [{ name: 'image', required: true, desc: '查询图片文件（multipart）' }], body: [
     { name: 'page', type: 'number', required: false, desc: '页码，默认 1' },
     { name: 'size', type: 'number', required: false, desc: '每页条数，默认 10，范围 1~100' },
     { name: 'keyword', type: 'string', required: false, desc: '关键词' },
@@ -217,7 +216,6 @@ const SPECS = [
     { name: 'lastOutboundEnd', type: 'string', required: false, desc: '最后出库结束日期 yyyy-MM-dd' },
     { name: 'lastInboundStart', type: 'string', required: false, desc: '最后入库开始日期 yyyy-MM-dd' },
     { name: 'lastInboundEnd', type: 'string', required: false, desc: '最后入库结束日期 yyyy-MM-dd' },
-    { name: 'imageBase64', type: 'string', required: true, desc: '查询图片 base64' },
     { name: 'similarityThreshold', type: 'number', required: false, desc: '相似度阈值，0~1' }
   ] },
   { command: 'inventory stats', method: 'GET', path: '/inventory/stats' },

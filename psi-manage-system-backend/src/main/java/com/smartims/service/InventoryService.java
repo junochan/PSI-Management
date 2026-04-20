@@ -10,6 +10,7 @@ import com.smartims.entity.InventoryTransfer;
 import com.smartims.entity.InventoryWarning;
 import com.smartims.entity.OutboundRecord;
 import com.smartims.vo.InventoryStatsVO;
+import org.springframework.web.multipart.MultipartFile;
 
 import java.util.List;
 
@@ -29,7 +30,7 @@ public interface InventoryService {
     /**
      * 以图搜图：在筛选条件内按商品主图与查询图的向量相似度排序并分页
      */
-    PageResult<Inventory> searchByImage(InventoryImageSearchRequest request);
+    PageResult<Inventory> searchByImage(InventoryImageSearchRequest request, MultipartFile image);
 
     /**
      * 根据ID查询库存详情

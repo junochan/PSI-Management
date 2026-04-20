@@ -3,7 +3,8 @@ name: psi-smart-ims-upload-image-followup
 description: >-
   智链进销存：用户仅上传一张商品图且无其它明确意图时，默认走「以图搜图」识别商品；若命中商品则继续拉取该商品的库存与库位、销售订单与采购订单。与 psi-smart-ims-products / psi-smart-ims-inventory 及 psims 配合使用。
   当用户发商品照片、截图、或说「看看这是什么货/有没有库存/在哪」且未指定 SKU/单号时使用本技能。
-  只要用户发了图片，就无条件走本技能流程，不做图片内容判断
+  只要用户发了图片，就无条件走本技能流程，不做图片内容判断。
+  对话中图片常以「[media attached: media/inbound/…]」形式给出工作区相对路径，Agent 应据此读盘取图并以 multipart 文件字段上传。
 ---
 
 # 上传图片后的默认查货流程（图搜图 → 库存 → 订单）
@@ -30,6 +31,27 @@ description: >-
 
 若用户同时给了 SKU、订单号、商品名称等更精确的检索条件，可先用语义/SKU 查商品，不必强行以图搜图；图搜作为补充。
 
+## 对话里「上传图片」的实际形态（必读）
+
+用户上传图片后，消息里常见**固定前缀**的附件说明，例如：
+
+```text
+[media attached: media/inbound/xxx.jpg (image/*)]
+```
+
+含义与 Agent 动作：
+
+| 要点 | 说明 |
+|------|------|
+| **路径性质** | `media/inbound/xxx.jpg` 为**工作区根目录下的相对路径**（非 URL）；`image/*` 为 MIME 类型提示。 |
+| **取图组请求** | 以该路径在工作区内**读取二进制文件**，作为 `POST .../search-by-image` 的 **multipart 字段 `image`** 上传；其余筛选参数按普通表单字段传。路径以消息中给出的为准，**不要猜测**其它目录或文件名。 |
+| **多条附件** | 若同条消息有多张图，按业务约定取**用户明确指定的一张**，否则取**第一条**完成图搜；其余可在回复中说明未处理。 |
+| **仅有文字无路径** | 以当前环境实际提供的附件元数据为准；若确实无可读路径，再说明无法读图并请用户重传。 |
+
+同一段落里系统还可能附带如下英文说明（与上表一致，可作关键词对照）：
+
+> To send an image back, prefer the message tool (media/path/filePath). If you must inline, use MEDIA:https://example.com/image.jpg (spaces ok, quote if needed) or a safe relative path like MEDIA:./image.jpg. Avoid absolute paths (MEDIA:/...) and ~ paths — they are blocked for security. Keep caption in the text body.
+
 ## 工作流（顺序执行）
 
 ### 1. 以图搜商品（必选第一步）
@@ -37,12 +59,12 @@ description: >-
 使用已有 **商品以图搜图** 能力（详见技能 **`psi-smart-ims-products`**）：
 
 - **HTTP**：`POST /api/v1/products/search-by-image`（网关前缀以部署为准）  
-- **Body**：图片检索请求 JSON，其中 **`imageBase64` 必填**；可设 `page`、`size`（建议首查 `size` 为 **5～10**，避免漏检）。  
+- **请求**：`multipart/form-data`，其中 **`image` 文件字段必填**；其余可设 `page`、`size`（建议首查 `size` 为 **5～10**，避免漏检）。  
 - **`keyword` 使用规则**：若用户仅上传图片、未明确提供商品名/关键词，则**不传 `keyword`**（或置空），只做纯图搜；仅当用户明确给出商品名/关键词时，才把该值传入 `keyword` 作为补充过滤。  
 - **`similarityThreshold`（图搜图相似度阈值）**：**默认 `0.7`**。若请求中传入该字段，**不得小于 `0.5`**；若用户或上游给出的值低于 `0.5`，在组请求前应**钳制为 `0.5`** 并可在回复中简要说明。  
 - **超时**：建议 **120s**（向量检索较慢）。
 
-**CLI**：`psims products search-image -d '<json>'` 或 `-f body.json`（需已 `psims auth login`）。
+**CLI**：`psims products search-image --image ./query.jpg -d '<json>'`（需已 `psims auth login`）。
 
 从响应数据中的候选列表（如 `records`）取候选商品：
 
@@ -85,14 +107,14 @@ psims purchase orders list -q "{\"productId\":123,\"page\":1,\"size\":20}"
 
 | 接口 | 路径参数 | Query 参数 | Body 参数 | 文件参数 |
 |------|----------|------------|-----------|----------|
-| `POST /products/search-by-image` | 无 | 无 | `page`(可选),`size`(可选),`keyword`(可选；**仅在用户明确给出商品名/关键词时传**，仅传图时不传),`categoryName`(可选),`status`(可选),`imageBase64`(必填),`similarityThreshold`(可选，**默认 0.7**；若传入则 **≥ 0.5**) | 无 |
+| `POST /products/search-by-image` | 无 | 无 | `page`(可选),`size`(可选),`keyword`(可选；**仅在用户明确给出商品名/关键词时传**，仅传图时不传),`categoryName`(可选),`status`(可选),`similarityThreshold`(可选，**默认 0.7**；若传入则 **≥ 0.5**) | `image`(必填，multipart 文件字段) |
 | `GET /inventory/product/{productId}` | `productId`(必填) | 无 | 无 | 无 |
 | `GET /sales/orders` | 无 | `productId`(建议必传),`page`(可选),`size`(可选),`sort`(可选),`order`(可选),`keyword`(可选),`warehouseId`(可选),`customerId`(可选),`supplierId`(可选),`categoryName`(可选),`productStatus`(可选),`stagnantStatus`(可选),`inboundStatus`(可选),`payStatus`(可选),`salesOrderStatus`(可选),`aftersalesStatus`(可选),`lastOutboundStart`(可选),`lastOutboundEnd`(可选),`lastInboundStart`(可选),`lastInboundEnd`(可选),`expectDateStart`(可选),`expectDateEnd`(可选),`createTimeStart`(可选),`createTimeEnd`(可选),`operatorName`(可选) | 无 | 无 |
 | `GET /purchase/orders` | 无 | `productId`(建议必传),`page`(可选),`size`(可选),`sort`(可选),`order`(可选),`keyword`(可选),`warehouseId`(可选),`customerId`(可选),`supplierId`(可选),`categoryName`(可选),`productStatus`(可选),`stagnantStatus`(可选),`inboundStatus`(可选),`payStatus`(可选),`salesOrderStatus`(可选),`aftersalesStatus`(可选),`lastOutboundStart`(可选),`lastOutboundEnd`(可选),`lastInboundStart`(可选),`lastInboundEnd`(可选),`expectDateStart`(可选),`expectDateEnd`(可选),`createTimeStart`(可选),`createTimeEnd`(可选),`operatorName`(可选) | 无 | 无 |
 
 CLI 参数对应：
 
-- `psims products search-image <-d <json> | -f <path>>`
+- `psims products search-image --image <path> <-d <json> | -f <path>>`
 - `psims inventory by-product <productId>`
 - `psims sales orders list -q '{"productId":123,"page":1,"size":20}'`
 - `psims purchase orders list -q '{"productId":123,"page":1,"size":20}'`
@@ -118,4 +140,5 @@ CLI 参数对应：
 1. **鉴权**：除登录接口外需 **Bearer JWT**；无 token 时应引导登录或使用已配置环境。  
 2. **分页参数名**：统一使用 **`page` / `size`**（与 `psims` 的 `-q` JSON 一致）。  
 3. **不要**将「仅上传图」默认成其它业务（如直接创建订单、改库存），除非用户明确说。  
-4. 响应整理时：**先结论**（是否命中 SKU/名称），再 **库存与库位**，再 **订单摘要**。
+4. 响应整理时：**先结论**（是否命中 SKU/名称），再 **库存与库位**，再 **订单摘要**。  
+5. **附图消息**：识别 `[media attached: …]` 中的工作区相对路径，从该路径读图并以 multipart 字段上传；**不要**用臆造的绝对路径或 `file://` 假设。

@@ -1,3 +1,5 @@
+import fs from 'fs'
+import FormData from 'form-data'
 import { printJson, readBodyFromOptions, parseQueryJson } from '../lib/util.mjs'
 
 export function registerInventory (program, { getApi }) {
@@ -27,13 +29,24 @@ export function registerInventory (program, { getApi }) {
 
   inv
     .command('search-image')
-    .description('POST /inventory/search-by-image')
-    .option('-d, --data <json>', 'JSON')
-    .option('-f, --file <path>', 'JSON 文件')
+    .description('POST /inventory/search-by-image（multipart，字段 image + 可选筛选字段）')
+    .requiredOption('--image <path>', '查询图片路径（multipart 字段 image）')
+    .option('-d, --data <json>', 'JSON（不含 image 字段）')
+    .option('-f, --file <path>', 'JSON 文件（不含 image 字段）')
     .action(async (opts, cmd) => {
-      const body = readBodyFromOptions(opts)
-      if (!body) throw new Error('请提供 --data 或 --file')
-      printJson(await getApi(cmd).post('/inventory/search-by-image', body))
+      const body = readBodyFromOptions(opts) || {}
+      const form = new FormData()
+      form.append('image', fs.createReadStream(opts.image))
+      for (const [k, v] of Object.entries(body)) {
+        if (v === undefined || v === null) continue
+        form.append(k, String(v))
+      }
+      printJson(await getApi(cmd).post('/inventory/search-by-image', form, {
+        headers: form.getHeaders(),
+        maxBodyLength: Infinity,
+        maxContentLength: Infinity,
+        timeout: 120000
+      }))
     })
 
   const transfers = inv.command('transfers').description('库存调拨')

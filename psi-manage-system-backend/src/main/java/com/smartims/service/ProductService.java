@@ -5,6 +5,7 @@ import com.smartims.dto.PageQuery;
 import com.smartims.dto.ProductDTO;
 import com.smartims.dto.ProductImageSearchRequest;
 import com.smartims.entity.Product;
+import org.springframework.web.multipart.MultipartFile;
 
 import java.util.List;
 
@@ -24,7 +25,7 @@ public interface ProductService {
     /**
      * 以图搜图：在筛选条件内按商品主图与查询图的向量相似度排序并分页
      */
-    PageResult<Product> searchByImage(ProductImageSearchRequest request);
+    PageResult<Product> searchByImage(ProductImageSearchRequest request, MultipartFile image);
 
     /**
      * 根据ID查询商品详情

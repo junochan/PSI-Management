@@ -65,9 +65,11 @@ public class ProductController {
     }
 
     @Operation(summary = "以图搜图（按商品主图相似度排序）")
-    @PostMapping("/search-by-image")
-    public Result<PageResult<Product>> searchByImage(@Valid @RequestBody ProductImageSearchRequest request) {
-        PageResult<Product> result = productService.searchByImage(request);
+    @PostMapping(value = "/search-by-image", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    public Result<PageResult<Product>> searchByImage(
+            @RequestParam("image") MultipartFile image,
+            @Valid @ModelAttribute ProductImageSearchRequest request) {
+        PageResult<Product> result = productService.searchByImage(request, image);
         return Result.success(result);
     }
 

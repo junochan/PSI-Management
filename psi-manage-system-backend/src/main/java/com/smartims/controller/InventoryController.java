@@ -17,7 +17,9 @@ import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import org.springframework.http.MediaType;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.multipart.MultipartFile;
 
 import java.util.List;
 
@@ -43,9 +45,11 @@ public class InventoryController {
     }
 
     @Operation(summary = "以图搜图（按商品主图相似度排序）")
-    @PostMapping("/search-by-image")
-    public Result<PageResult<Inventory>> searchByImage(@Valid @RequestBody InventoryImageSearchRequest request) {
-        PageResult<Inventory> result = inventoryService.searchByImage(request);
+    @PostMapping(value = "/search-by-image", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    public Result<PageResult<Inventory>> searchByImage(
+            @RequestParam("image") MultipartFile image,
+            @Valid @ModelAttribute InventoryImageSearchRequest request) {
+        PageResult<Inventory> result = inventoryService.searchByImage(request, image);
         return Result.success(result);
     }
 

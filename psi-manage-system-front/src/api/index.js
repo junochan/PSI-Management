@@ -112,8 +112,31 @@ export const productApi = {
     uploadApi.post('/products/import', formData, { timeout: 120000 }),
   /** 查询异步导入任务进度 */
   getImportTask: (jobId) => api.get(`/products/import/${jobId}`),
-  /** 以图搜图（百炼向量，可能较慢） */
-  searchByImage: (data) => api.post('/products/search-by-image', data, { timeout: 120000 })
+  /**
+   * 以图搜图（multipart：字段 image 为 File/Blob，其余为表单文本字段）
+   * @param {{ file: Blob, page?: number, size?: number, keyword?: string, categoryName?: string, status?: string, similarityThreshold?: number }} opts
+   */
+  searchByImage: (opts) => {
+    if (!opts?.file) {
+      return Promise.reject(new Error('请先上传查询图片'))
+    }
+    const fd = new FormData()
+    fd.append('image', opts.file)
+    const add = (key, val) => {
+      if (val === undefined || val === null) return
+      if (typeof val === 'string' && val.trim() === '') return
+      fd.append(key, String(val))
+    }
+    add('page', opts.page)
+    add('size', opts.size)
+    add('keyword', opts.keyword)
+    add('categoryName', opts.categoryName)
+    add('status', opts.status)
+    if (opts.similarityThreshold !== undefined && opts.similarityThreshold !== null) {
+      fd.append('similarityThreshold', String(opts.similarityThreshold))
+    }
+    return uploadApi.post('/products/search-by-image', fd, { timeout: 120000 })
+  }
 }
 
 // 供应商 API
@@ -197,8 +220,36 @@ export const inventoryApi = {
   updateSafeStock: (inventoryId, safeStock) => api.put(`/inventory/${inventoryId}/safe-stock`, null, { params: { safeStock } }),
   updateLocation: (inventoryId, location) => api.put(`/inventory/${inventoryId}/location`, null, { params: { location } }),
   updateStagnantDays: (inventoryId, stagnantDays) => api.put(`/inventory/${inventoryId}/stagnant-days`, null, { params: { stagnantDays } }),
-  /** 以图搜图（百炼向量，可能较慢） */
-  searchByImage: (data) => api.post('/inventory/search-by-image', data, { timeout: 120000 })
+  /**
+   * 以图搜图（multipart：字段 image 为 File/Blob）
+   * @param {{ file: Blob, page?: number, size?: number, keyword?: string, productId?: number, warehouseId?: number, stagnantStatus?: string, lastOutboundStart?: string, lastOutboundEnd?: string, lastInboundStart?: string, lastInboundEnd?: string, similarityThreshold?: number }} opts
+   */
+  searchByImage: (opts) => {
+    if (!opts?.file) {
+      return Promise.reject(new Error('请先上传查询图片'))
+    }
+    const fd = new FormData()
+    fd.append('image', opts.file)
+    const add = (key, val) => {
+      if (val === undefined || val === null) return
+      if (typeof val === 'string' && val.trim() === '') return
+      fd.append(key, String(val))
+    }
+    add('page', opts.page)
+    add('size', opts.size)
+    add('keyword', opts.keyword)
+    add('productId', opts.productId)
+    add('warehouseId', opts.warehouseId)
+    add('stagnantStatus', opts.stagnantStatus)
+    add('lastOutboundStart', opts.lastOutboundStart)
+    add('lastOutboundEnd', opts.lastOutboundEnd)
+    add('lastInboundStart', opts.lastInboundStart)
+    add('lastInboundEnd', opts.lastInboundEnd)
+    if (opts.similarityThreshold !== undefined && opts.similarityThreshold !== null) {
+      fd.append('similarityThreshold', String(opts.similarityThreshold))
+    }
+    return uploadApi.post('/inventory/search-by-image', fd, { timeout: 120000 })
+  }
 }
 
 // 售后 API
